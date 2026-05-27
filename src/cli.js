@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 'use strict';
 
-const fs   = require('fs');
-const path = require('path');
+const fs       = require('fs');
+const path     = require('path');
 const readline = require('readline');
 
 const { verifyTarget, verifyScope } = require('./safety');
@@ -11,18 +11,17 @@ const { ProxyCore }                 = require('./proxy');
 const { runReplay }                 = require('./replay');
 const { printFindings, saveReport } = require('./reporter');
 
-// ─── Authorization gate ───────────────────────────────────────────────────────
-// Must be completed once before the tool will run. Creates a local marker file.
-const CONSENT_FILE = path.join(
-  process.env.HOME || process.env.USERPROFILE || '.', '.accguard_consent'
-);
+const VERSION         = '0.9.1';
+const CONSENT_FILE    = path.join(process.env.HOME || process.env.USERPROFILE || '.', '.accguard_consent');
 const REQUIRED_PHRASE = 'I own or have written authorization to test the target system';
+
+// ── Authorization gate ────────────────────────────────────────────────────────
 
 async function requireConsent() {
   if (fs.existsSync(CONSENT_FILE)) return;
 
   console.log('\n' + '═'.repeat(66));
-  console.log('  accguard — authorization required');
+  console.log(`  accguard v${VERSION} — authorization required`);
   console.log('═'.repeat(66));
   console.log('\n  This tool probes your application for access control');
   console.log('  vulnerabilities. You must only use it against systems');
@@ -34,7 +33,7 @@ async function requireConsent() {
   console.log('\n  Type the following sentence exactly to continue:\n');
   console.log(`  "${REQUIRED_PHRASE}"\n`);
 
-  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+  const rl     = readline.createInterface({ input: process.stdin, output: process.stdout });
   const answer = await new Promise(resolve => rl.question('  > ', resolve));
   rl.close();
 
@@ -43,26 +42,50 @@ async function requireConsent() {
     process.exit(1);
   }
 
-  fs.writeFileSync(CONSENT_FILE, JSON.stringify({
-    agreedAt: new Date().toISOString(),
-    phrase:   REQUIRED_PHRASE,
-  }), 'utf8');
-
-  console.log('\n  Consent recorded. accguard is ready to use.\n');
+  // A10: wrap consent file write — failure here should not crash silently
+  try {
+    fs.writeFileSync(CONSENT_FILE, JSON.stringify({
+      agreedAt: new Date().toISOString(),
+      phrase:   REQUIRED_PHRASE,
+    }), 'utf8');
+    console.log('\n  Consent recorded. accguard is ready to use.\n');
+  } catch (err) {
+    // Non-fatal — consent was given, file write failed (e.g. read-only home dir)
+    console.warn(`\n  Warning: could not save consent record: ${err.message}`);
+    console.warn('  You will be asked to confirm again on the next run.\n');
+  }
 }
 
-// ─── Config loading ───────────────────────────────────────────────────────────
+// ── Config loading — A10 compliant ────────────────────────────────────────────
+
 function loadConfig() {
   const configPath = path.resolve(process.env.ACCGUARD_CONFIG || 'accguard.config.json');
+
   if (!fs.existsSync(configPath)) {
     console.error(`[accguard] No config found at ${configPath}`);
     console.error('[accguard] Create accguard.config.json — see README for format.');
     process.exit(1);
   }
-  return JSON.parse(fs.readFileSync(configPath, 'utf8'));
+
+  let raw;
+  try {
+    raw = fs.readFileSync(configPath, 'utf8');
+  } catch (err) {
+    console.error(`[accguard] Could not read config at ${configPath}: ${err.message}`);
+    process.exit(1);
+  }
+
+  try {
+    return JSON.parse(raw);
+  } catch (err) {
+    console.error(`[accguard] Config file is not valid JSON: ${err.message}`);
+    console.error(`[accguard] Check ${configPath} for syntax errors.`);
+    process.exit(1);
+  }
 }
 
-// ─── Main ─────────────────────────────────────────────────────────────────────
+// ── Main ──────────────────────────────────────────────────────────────────────
+
 async function main() {
   await requireConsent();
 
@@ -75,7 +98,8 @@ async function main() {
     outputFile = 'accguard-report.json',
   } = config;
 
-  // Safety checks — these throw and exit if they fail
+  const secondToken = process.env.ACCGUARD_TOKEN_B;
+
   try {
     await verifyTarget(target);
     verifyScope(scope);
@@ -87,11 +111,26 @@ async function main() {
   const store = new SessionStore();
   const proxy = new ProxyCore({ target, scope, exclude, store });
 
-  await proxy.listen(port);
-  console.log(`[accguard] Set HTTP_PROXY=http://127.0.0.1:${port} and run your tests.`);
-  console.log('[accguard] Send SIGINT (Ctrl+C) or POST /--flush when done.\n');
+  // A10: proxy listen failure should surface clearly
+  try {
+    await proxy.listen(port);
+  } catch (err) {
+    console.error(`[accguard] Could not start proxy on port ${port}: ${err.message}`);
+    console.error(`[accguard] Is something already running on port ${port}?`);
+    process.exit(1);
+  }
 
-  // Flush endpoint — useful in CI where you can't send signals easily
+  console.log(`\n  accguard v${VERSION}`);
+  console.log(`  ${'─'.repeat(44)}`);
+  console.log(`  Proxy   : http://127.0.0.1:${port}`);
+  console.log(`  Target  : ${target}`);
+  console.log(`  Scope   : ${scope.join(', ')}`);
+  console.log(`  Replay  : ${secondToken ? 'enabled' : 'disabled (set ACCGUARD_TOKEN_B)'}`);
+  console.log(`  ${'─'.repeat(44)}`);
+  console.log(`  Set HTTP_PROXY=http://127.0.0.1:${port} and run your tests.`);
+  console.log(`  Press Ctrl+C or POST /--flush when done.\n`);
+
+  // CI flush endpoint
   proxy.server.on('request', (req, res) => {
     if (req.url === '/--flush' && req.method === 'POST') {
       res.writeHead(200);
@@ -100,25 +139,32 @@ async function main() {
     }
   });
 
-  // Handle shutdown
   const triggerFlush = async () => {
     console.log('\n[accguard] Stopping proxy and running replay...');
-    await proxy.close();
 
-    const secondToken = process.env.ACCGUARD_TOKEN_B;
+    try {
+      await proxy.close();
+    } catch (err) {
+      console.error(`[accguard] Error closing proxy: ${err.message}`);
+      // Continue — findings are more important than a clean shutdown
+    }
+
     if (!secondToken) {
       console.log('[accguard] ACCGUARD_TOKEN_B not set — skipping replay.');
-      console.log('[accguard] Set it to a second user\'s session token to enable access control checks.');
+      console.log('[accguard] Set it to a second user\'s session token to enable checks.');
       process.exit(0);
     }
 
-    const findings = await runReplay({ store, targetUrl: target, secondToken });
+    let findings = [];
+    try {
+      findings = await runReplay({ store, targetUrl: target, secondToken });
+    } catch (err) {
+      console.error(`[accguard] Replay failed: ${err.message}`);
+      // Print whatever was in the store before exiting
+    }
 
     printFindings(findings, store);
-
     if (outputFile) saveReport(findings, store, outputFile);
-
-    // Exit 1 if findings — integrates cleanly with CI pass/fail
     process.exit(findings.length > 0 ? 1 : 0);
   };
 

@@ -1,12 +1,18 @@
 {
   "name": "accguard",
-  "version": "0.1.0",
-  "description": "Session-aware access control proxy for local test environments",
-  "main": "src/index.js",
+  "version": "0.9.0",
+  "description": "Authorization regression testing from real authenticated traffic",
+  "main": "src/cli.js",
   "bin": { "accguard": "src/cli.js" },
   "scripts": {
     "start": "node src/cli.js",
-    "test": "node test/run.js"
+    "test":  "node test/run.js",
+    "demo":  "node demo.js"
   },
-  "license": "MIT"
+  "keywords": [
+    "authorization", "regression", "testing", "idor",
+    "access-control", "appsec", "proxy", "bola", "security"
+  ],
+  "license": "MIT",
+  "engines": { "node": ">=18" }
 }

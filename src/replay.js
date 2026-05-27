@@ -1,33 +1,82 @@
 'use strict';
 
-const http  = require('http');
-const https = require('https');
+const http   = require('http');
+const https  = require('https');
+const crypto = require('crypto');
 const { URL } = require('url');
 
-// Heuristics to decide if a replay response is a genuine access control failure.
-// Returns true if the replay looks like it returned real data it shouldn't have.
-function looksLikeRealData(original, replay) {
-  // Must have gotten 200-level on replay
-  if (replay.statusCode < 200 || replay.statusCode >= 300) return false;
+// ── Semantic comparison ───────────────────────────────────────────────────────
+//
+// Two responses are considered identical when their normalised JSON hashes
+// match — not when their byte sizes are similar.
+//
+// sortKeys ensures {b:1,a:2} and {a:2,b:1} produce the same hash.
+// The body itself is never stored — only the fingerprint.
+// ─────────────────────────────────────────────────────────────────────────────
 
-  // Original was already non-200 — skip (nothing to compare against)
-  if (original.statusCode < 200 || original.statusCode >= 300) return false;
-
-  // If the replay body is empty or tiny, it's probably an empty 200 — not real data
-  if (replay.bodyLength < 10) return false;
-
-  // If the replay body is within 20% of the original size, it probably
-  // returned the same data. This is the key signal.
-  if (original.contentLength > 0) {
-    const ratio = replay.bodyLength / original.contentLength;
-    if (ratio > 0.8) return true;
-  }
-
-  // Fallback: any non-trivial body returned for a resource-ID endpoint
-  return replay.bodyLength > 50;
+function sortKeys(val) {
+  if (Array.isArray(val))             return val.map(sortKeys);
+  if (val && typeof val === 'object') return Object.fromEntries(
+    Object.keys(val).sort().map(k => [k, sortKeys(val[k])])
+  );
+  return val;
 }
 
-async function replayRequest({ targetUrl, entry, secondToken }) {
+function contentHash(body, contentType) {
+  if (!body || body.length === 0) return 'empty';
+
+  if (contentType && contentType.includes('application/json')) {
+    try {
+      const parsed     = JSON.parse(body.toString('utf8'));
+      const normalized = JSON.stringify(sortKeys(parsed));
+      return 'json:' + crypto.createHash('sha256').update(normalized).digest('hex').slice(0, 16);
+    } catch { /* fall through */ }
+  }
+
+  return 'raw:' + crypto.createHash('sha256').update(body).digest('hex').slice(0, 16);
+}
+
+// ── Auth headers ──────────────────────────────────────────────────────────────
+// Replay using the same delivery mechanism that was recorded —
+// bearer header or session cookie.
+
+function authHeaders(secondToken, entry) {
+  if ((entry.tokenType || 'bearer') === 'cookie') {
+    return { 'cookie': `${entry.cookieName || 'session'}=${secondToken}` };
+  }
+  return { 'authorization': `Bearer ${secondToken}` };
+}
+
+// ── Confidence assessment ─────────────────────────────────────────────────────
+
+function assessFinding(original, replay) {
+  if (replay.statusCode < 200  || replay.statusCode >= 300) return 'none';
+  if (original.statusCode < 200 || original.statusCode >= 300) return 'none';
+  if (!replay.body || replay.body.length < 10) return 'none';
+
+  // Semantic hash match — highest confidence
+  if (original.contentHash && replay.contentHash &&
+      original.contentHash !== 'empty' &&
+      original.contentHash === replay.contentHash) {
+    return 'confirmed';
+  }
+
+  // Size proximity fallback — only when no hashes available at all
+  const originalHasHash = original.contentHash && original.contentHash !== 'empty';
+  const replayHasHash   = replay.contentHash   && replay.contentHash   !== 'empty';
+  if (!originalHasHash && !replayHasHash) {
+    if (original.contentLength > 20 && replay.body.length > 0) {
+      const ratio = replay.body.length / original.contentLength;
+      if (ratio > 0.95 && ratio < 1.05) return 'possible';
+    }
+  }
+
+  return 'none';
+}
+
+// ── Replay one request ────────────────────────────────────────────────────────
+
+function replayRequest({ targetUrl, entry, secondToken }) {
   return new Promise((resolve, reject) => {
     const target  = new URL(targetUrl);
     const options = {
@@ -36,21 +85,26 @@ async function replayRequest({ targetUrl, entry, secondToken }) {
       path:     entry.path + entry.query,
       method:   entry.method,
       headers: {
-        'authorization': `Bearer ${secondToken}`,
-        'accept':        'application/json',
-        'user-agent':    'accguard-replay/0.1',
+        'accept':     'application/json',
+        'user-agent': 'accguard/0.9',
+        ...authHeaders(secondToken, entry),
       },
     };
 
     const transport = target.protocol === 'https:' ? https : http;
-    const req = transport.request(options, (res) => {
+    const req = transport.request(options, res => {
       const chunks = [];
       res.on('data', c => chunks.push(c));
-      res.on('end', () => resolve({
-        statusCode:  res.statusCode,
-        bodyLength:  Buffer.concat(chunks).length,
-        headers:     res.headers,
-      }));
+      res.on('end', () => {
+        const body        = Buffer.concat(chunks);
+        const contentType = res.headers['content-type'] || '';
+        resolve({
+          statusCode:  res.statusCode,
+          body,
+          bodyLength:  body.length,
+          contentHash: contentHash(body, contentType),
+        });
+      });
     });
 
     req.on('error', reject);
@@ -59,15 +113,15 @@ async function replayRequest({ targetUrl, entry, secondToken }) {
   });
 }
 
-// Run the full replay pass. Returns array of confirmed findings.
+// ── Main replay pass ──────────────────────────────────────────────────────────
+
 async function runReplay({ store, targetUrl, secondToken, logger }) {
   const log      = logger || console;
   const entries  = store.replayable();
-  const tokens   = store.knownTokens();
   const findings = [];
 
-  if (tokens.length < 2 && !secondToken) {
-    log.log('[accguard] Only one session token observed — provide ACCGUARD_TOKEN_B to enable replay.');
+  if (!secondToken) {
+    log.log('[accguard] ACCGUARD_TOKEN_B not set — skipping replay.');
     return findings;
   }
 
@@ -82,24 +136,31 @@ async function runReplay({ store, targetUrl, secondToken, logger }) {
       continue;
     }
 
-    if (looksLikeRealData(entry, result)) {
-      findings.push({
-        severity:   'high',
-        type:       'broken-access-control',
-        method:     entry.method,
-        path:       entry.path + entry.query,
-        resourceIds: entry.resourceIds,
-        originalStatus: entry.statusCode,
-        replayStatus:   result.statusCode,
-        originalSize:   entry.contentLength,
-        replaySize:     result.bodyLength,
-        // Reproducible curl command — the main output developers care about
-        curl: `curl -s -o /dev/null -w "%{http_code}" -H "Authorization: Bearer $TOKEN_B" "${targetUrl}${entry.path}${entry.query}"`,
-      });
-    }
+    const confidence = assessFinding(entry, result);
+    if (confidence === 'none') continue;
+
+    const authFlag = (entry.tokenType || 'bearer') === 'cookie'
+      ? `-b "${entry.cookieName || 'session'}=$TOKEN_B"`
+      : `-H "Authorization: Bearer $TOKEN_B"`;
+
+    findings.push({
+      severity:       'high',
+      type:           'broken-access-control',
+      confidence,
+      method:         entry.method,
+      path:           entry.path + entry.query,
+      resourceIds:    entry.resourceIds,
+      tokenType:      entry.tokenType || 'bearer',
+      originalStatus: entry.statusCode,
+      replayStatus:   result.statusCode,
+      originalSize:   entry.contentLength,
+      replaySize:     result.bodyLength,
+      matchType:      result.contentHash === entry.contentHash ? 'semantic-hash' : 'size-proximity',
+      curl:           `curl -s ${authFlag} "${targetUrl}${entry.path}${entry.query}"`,
+    });
   }
 
   return findings;
 }
 
-module.exports = { runReplay, looksLikeRealData };
+module.exports = { runReplay, assessFinding, contentHash, sortKeys };

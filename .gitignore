@@ -1,23 +1,12 @@
-# Dependencies
 node_modules/
-
-# accguard runtime output
 accguard-report.json
+shoplab-report.json
 accguard-session.json
-
-# Consent marker — local to each machine, never committed
 .accguard_consent
-
-# Environment files — may contain real tokens
 .env
 .env.*
-
-# OS noise
 .DS_Store
 Thumbs.db
-
-# Editor noise
 .vscode/
 .idea/
 *.swp
-*.swo

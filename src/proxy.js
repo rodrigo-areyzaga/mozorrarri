@@ -3,55 +3,50 @@
 const http  = require('http');
 const https = require('https');
 const { URL } = require('url');
+const { contentHash } = require('./replay');
 
 class ProxyCore {
   constructor({ target, scope, exclude = [], store, logger }) {
     this.target  = new URL(target);
-    this.scope   = scope;   // string[] of path prefixes to record
-    this.exclude = exclude; // string[] of path prefixes to always skip
+    this.scope   = scope;
+    this.exclude = exclude;
     this.store   = store;
     this.logger  = logger || console;
     this.server  = null;
   }
 
-  // Is this path inside the declared scope and not excluded?
   _inScope(pathname) {
-    const excluded = this.exclude.some(p => pathname.startsWith(p));
-    if (excluded) return false;
+    if (this.exclude.some(p => pathname.startsWith(p))) return false;
     return this.scope.some(p => pathname.startsWith(p));
   }
 
-  // Forward one request to the real app and return { statusCode, headers, body }
   _forward(incomingReq, bodyBuffer) {
     return new Promise((resolve, reject) => {
-      const targetPath = incomingReq.url; // preserve path + query
       const options = {
         hostname: this.target.hostname,
         port:     this.target.port || (this.target.protocol === 'https:' ? 443 : 80),
-        path:     targetPath,
+        path:     incomingReq.url,
         method:   incomingReq.method,
         headers:  { ...incomingReq.headers, host: this.target.host },
       };
 
       const transport = this.target.protocol === 'https:' ? https : http;
-      const proxyReq  = transport.request(options, (proxyRes) => {
+      const req = transport.request(options, res => {
         const chunks = [];
-        proxyRes.on('data', c => chunks.push(c));
-        proxyRes.on('end', () => resolve({
-          statusCode:    proxyRes.statusCode,
-          headers:       proxyRes.headers,
-          body:          Buffer.concat(chunks),
-          contentLength: parseInt(proxyRes.headers['content-length'] || '0', 10),
+        res.on('data', c => chunks.push(c));
+        res.on('end', () => resolve({
+          statusCode:  res.statusCode,
+          headers:     res.headers,
+          body:        Buffer.concat(chunks),
         }));
       });
 
-      proxyReq.on('error', reject);
-      if (bodyBuffer && bodyBuffer.length) proxyReq.write(bodyBuffer);
-      proxyReq.end();
+      req.on('error', reject);
+      if (bodyBuffer && bodyBuffer.length) req.write(bodyBuffer);
+      req.end();
     });
   }
 
-  // Read the full body of an incoming request into a buffer
   _readBody(req) {
     return new Promise((resolve, reject) => {
       const chunks = [];
@@ -63,13 +58,9 @@ class ProxyCore {
 
   async _handleRequest(req, res) {
     const parsed   = new URL(req.url, 'http://localhost');
-    const pathname = parsed.pathname;
-    const inScope  = this._inScope(pathname);
-
-    // Read the body regardless — we need to forward it even if not recording
+    const inScope  = this._inScope(parsed.pathname);
     const bodyBuffer = await this._readBody(req);
 
-    // Forward to the real app
     let upstream;
     try {
       upstream = await this._forward(req, bodyBuffer);
@@ -80,33 +71,38 @@ class ProxyCore {
       return;
     }
 
-    // Record metadata (never body content) if in scope
     if (inScope) {
       this.store.record({
         method:        req.method,
         url:           req.url,
         headers:       req.headers,
         statusCode:    upstream.statusCode,
-        contentLength: upstream.contentLength,
+        contentLength: upstream.body.length,
+        contentHash:   contentHash(upstream.body, upstream.headers['content-type'] || ''),
       });
     }
 
-    // Return the upstream response unmodified
     res.writeHead(upstream.statusCode, upstream.headers);
     res.end(upstream.body);
   }
 
-  // Start listening. Always binds to 127.0.0.1 only — never 0.0.0.0
   listen(port) {
-    return new Promise((resolve) => {
+    return new Promise(resolve => {
       this.server = http.createServer((req, res) => {
         this._handleRequest(req, res).catch(err => {
           this.logger.error(`[accguard] Unhandled error: ${err.message}`);
-          if (!res.headersSent) {
-            res.writeHead(500);
-            res.end('accguard: internal error');
-          }
+          if (!res.headersSent) { res.writeHead(500); res.end('accguard: internal error'); }
         });
+      });
+
+      // Catch HTTPS CONNECT attempts — explain clearly instead of failing silently
+      this.server.on('connect', (req, socket) => {
+        this.logger.log(
+          `[accguard] HTTPS request for "${req.url}" — accguard records HTTP only.\n` +
+          `           Update your target to http:// or configure your app to use HTTP in tests.`
+        );
+        socket.write('HTTP/1.1 501 HTTPS Not Supported\r\n\r\n');
+        socket.end();
       });
 
       // SAFETY: bind only to loopback — cannot be reached from outside this machine
@@ -118,7 +114,7 @@ class ProxyCore {
   }
 
   close() {
-    return new Promise((resolve) => {
+    return new Promise(resolve => {
       if (this.server) this.server.close(resolve);
       else resolve();
     });

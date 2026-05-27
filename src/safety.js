@@ -2,7 +2,6 @@
 
 const dns = require('dns').promises;
 
-// RFC 1918 + loopback ranges that are safe targets
 const PRIVATE_RANGES = [
   /^127\./,
   /^10\./,
@@ -16,10 +15,6 @@ function isPrivateHost(hostname) {
   return PRIVATE_RANGES.some(r => r.test(hostname));
 }
 
-// Resolve hostname and confirm every address is private.
-// Throws a descriptive error if any address is public — this
-// catches DNS rebinding attacks where a name starts pointing
-// at a public IP mid-session.
 async function verifyTarget(targetUrl) {
   let url;
   try {
@@ -28,12 +23,17 @@ async function verifyTarget(targetUrl) {
     throw new Error(`Invalid target URL: ${targetUrl}`);
   }
 
-  const hostname = url.hostname;
+  if (url.protocol === 'https:') {
+    throw new Error(
+      `Target is HTTPS — accguard currently records HTTP traffic only.\n` +
+      `Change your target to http://${url.host} to get started.\n` +
+      `(Most local test environments work fine over HTTP.)`
+    );
+  }
 
-  // Loopback hostnames pass immediately without DNS
+  const hostname = url.hostname;
   if (isPrivateHost(hostname)) return;
 
-  // Resolve and check every returned address
   let addresses;
   try {
     const v4 = await dns.resolve4(hostname).catch(() => []);
@@ -59,7 +59,6 @@ async function verifyTarget(targetUrl) {
   }
 }
 
-// Check that scope paths are declared and non-empty
 function verifyScope(scope) {
   if (!scope || !Array.isArray(scope) || scope.length === 0) {
     throw new Error(
