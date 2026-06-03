@@ -4,6 +4,8 @@
 
 **Authorization regression testing from real authenticated traffic.**
 
+![accguard demo](docs/accguard-demo.gif)
+
 Authentication proves who you are.
 Authorization proves what you can access.
 accguard detects when those boundaries fail: authenticated user ≠ authorized user
