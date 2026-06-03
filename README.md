@@ -22,6 +22,8 @@ No install. No config. No accounts. Under 90 seconds from clone to first finding
 
 ---
 
+See [accguard-bola-demo](https://github.com/rodrigo-areyzaga/accguard-bola-demo) for a runnable example — catches a real BOLA vulnerability in under 90 seconds.
+
 ## What it does
 
 accguard does one thing: it tells you whether user B can access user A's resources, using the traffic your tests already generate.
