@@ -4,28 +4,23 @@
 
 **Authorization regression testing from real authenticated traffic.**
 
-![accguard demo](docs/accguard-demo.gif)
-
-Authentication proves who you are.
-Authorization proves what you can access.
-accguard detects when those boundaries fail: authenticated user ≠ authorized user
-
 Broken access control remains the most common high-impact API vulnerability. Existing scanners can't reliably catch it — they don't have authenticated context. They've never logged into your app.
 
 Your test suite has that context. accguard uses it.
 
 ---
 
-## Try the BOLA demo
+## Try it now
 
 ```bash
-git clone https://github.com/rodrigo-areyzaga/accguard-bola-demo
-cd accguard-bola-demo
-npm install
-npm run demo
+git clone https://github.com/rodrigo-areyzaga/accguard
+cd accguard
+node demo.js
 ```
 
-Under 90 seconds from clone to confirmed authorization regression.
+No install. No config. No accounts. Under 90 seconds from clone to first finding.
+
+---
 
 ## What it does
 
@@ -229,6 +224,19 @@ HTTP_PROXY=http://127.0.0.1:8877 npm test
 ```
 
 accguard exits with code `1` if authorization regressions are detected, `0` if clean. The CI step fails automatically when an ownership boundary is violated.
+
+To preserve the report as a downloadable CI artifact — including on failed runs:
+
+```yaml
+- name: Save accguard report
+  uses: actions/upload-artifact@v4
+  with:
+    name: accguard-report
+    path: accguard-report.json
+  if: always()
+```
+
+The `if: always()` is important — without it, the artifact is skipped when accguard exits with code `1`, which is exactly the run you most want to keep.
 
 ---
 
