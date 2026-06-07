@@ -1,0 +1,129 @@
+{
+  "version": "0.9.2",
+  "generatedAt": "2026-05-29T00:32:29.131Z",
+  "summary": {
+    "observed": 9,
+    "replayCandidates": 5,
+    "resourcePatterns": 4,
+    "authMechanisms": "bearer",
+    "findings": 5
+  },
+  "findings": [
+    {
+      "severity": "high",
+      "type": "broken-access-control",
+      "confidence": "confirmed",
+      "method": "GET",
+      "path": "/api/users/user-alice",
+      "resourceIds": [
+        {
+          "type": "slug",
+          "value": "user-alice"
+        }
+      ],
+      "tokenType": "bearer",
+      "originalStatus": 200,
+      "replayStatus": 200,
+      "originalSize": 126,
+      "replaySize": 126,
+      "matchType": "semantic-hash",
+      "curl": "curl -s -H \"Authorization: Bearer $TOKEN_B\" \"http://127.0.0.1:3100/api/users/user-alice\""
+    },
+    {
+      "severity": "high",
+      "type": "broken-access-control",
+      "confidence": "confirmed",
+      "method": "GET",
+      "path": "/api/orders/ord-1001",
+      "resourceIds": [
+        {
+          "type": "integer",
+          "value": "1001"
+        },
+        {
+          "type": "slug",
+          "value": "ord-1001"
+        }
+      ],
+      "tokenType": "bearer",
+      "originalStatus": 200,
+      "replayStatus": 200,
+      "originalSize": 122,
+      "replaySize": 122,
+      "matchType": "semantic-hash",
+      "curl": "curl -s -H \"Authorization: Bearer $TOKEN_B\" \"http://127.0.0.1:3100/api/orders/ord-1001\""
+    },
+    {
+      "severity": "high",
+      "type": "broken-access-control",
+      "confidence": "confirmed",
+      "method": "GET",
+      "path": "/api/orders/ord-1002",
+      "resourceIds": [
+        {
+          "type": "integer",
+          "value": "1002"
+        },
+        {
+          "type": "slug",
+          "value": "ord-1002"
+        }
+      ],
+      "tokenType": "bearer",
+      "originalStatus": 200,
+      "replayStatus": 200,
+      "originalSize": 113,
+      "replaySize": 113,
+      "matchType": "semantic-hash",
+      "curl": "curl -s -H \"Authorization: Bearer $TOKEN_B\" \"http://127.0.0.1:3100/api/orders/ord-1002\""
+    },
+    {
+      "severity": "high",
+      "type": "broken-access-control",
+      "confidence": "confirmed",
+      "method": "GET",
+      "path": "/api/payment/pay-1",
+      "resourceIds": [
+        {
+          "type": "integer",
+          "value": "1"
+        },
+        {
+          "type": "slug",
+          "value": "pay-1"
+        }
+      ],
+      "tokenType": "bearer",
+      "originalStatus": 200,
+      "replayStatus": 200,
+      "originalSize": 102,
+      "replaySize": 102,
+      "matchType": "semantic-hash",
+      "curl": "curl -s -H \"Authorization: Bearer $TOKEN_B\" \"http://127.0.0.1:3100/api/payment/pay-1\""
+    },
+    {
+      "severity": "high",
+      "type": "broken-access-control",
+      "confidence": "confirmed",
+      "method": "GET",
+      "path": "/api/documents/doc-101",
+      "resourceIds": [
+        {
+          "type": "integer",
+          "value": "101"
+        },
+        {
+          "type": "slug",
+          "value": "doc-101"
+        }
+      ],
+      "tokenType": "bearer",
+      "originalStatus": 200,
+      "replayStatus": 200,
+      "originalSize": 124,
+      "replaySize": 124,
+      "matchType": "semantic-hash",
+      "curl": "curl -s -H \"Authorization: Bearer $TOKEN_B\" \"http://127.0.0.1:3100/api/documents/doc-101\""
+    }
+  ]
+}

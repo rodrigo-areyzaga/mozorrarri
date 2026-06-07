@@ -2,8 +2,37 @@
 
 const http   = require('http');
 const https  = require('https');
+const crypto = require('crypto');
 const { URL } = require('url');
 const { contentHash } = require('./replay');
+
+// Normalize a URL path for scope/exclude matching.
+// Applies the same transformations most web servers apply before routing:
+//   1. Lowercase
+//   2. Two-pass percent-decode — catches double-encoding (%252F → %2F → /)
+//      and other double-encoded characters (%2562 → %62 → b)
+//   3. Replace residual %2f/%2F with / after decode passes
+//   4. Resolve path traversal via URL normalization
+//   5. Strip matrix parameters (;param=value) — Java/Tomcat strip these before routing
+function normalizePath(p) {
+  try {
+    // Two-pass decode: first pass handles single encoding, second catches double encoding.
+    // decodeURIComponent throws on malformed sequences — catch and use what we have.
+    let decoded = p;
+    for (let i = 0; i < 2; i++) {
+      try { decoded = decodeURIComponent(decoded); } catch { break; }
+    }
+    decoded = decoded.toLowerCase();
+    // Replace any residual encoded slashes that survived decoding
+    decoded = decoded.replace(/%2f/gi, '/');
+    // Resolve traversal sequences via URL normalization
+    const normalized = new URL(decoded, 'http://x').pathname;
+    // Strip matrix parameters — ;v=1, ;jsessionid=abc, etc.
+    return normalized.replace(/;[^/]*/g, '');
+  } catch {
+    return p.toLowerCase().replace(/;[^/]*/g, '');
+  }
+}
 
 // Headers to strip before forwarding.
 // accept-encoding  — forces uncompressed JSON for reliable hashing
@@ -14,8 +43,12 @@ const STRIP_HEADERS = new Set(['accept-encoding', 'transfer-encoding', 'connecti
 class ProxyCore {
   constructor({ target, scope, exclude = [], store, logger, onFlush }) {
     this.target   = new URL(target);
-    this.scope    = scope;
-    this.exclude  = exclude;
+    // Normalize scope and exclude at construction time — lowercase and decode
+    // unreserved percent-encoding so they match what the target router sees.
+    // Prevents case/encoding discrepancies between proxy scope matching and
+    // server routing from creating exclude-list bypasses.
+    this.scope    = scope.map(normalizePath);
+    this.exclude  = exclude.map(normalizePath);
     this.store    = store;
     this.logger   = logger || console;
     this.onFlush  = onFlush || null; // callback for CI /--flush endpoint
@@ -23,8 +56,29 @@ class ProxyCore {
   }
 
   _inScope(pathname) {
-    if (this.exclude.some(p => pathname.startsWith(p))) return false;
-    return this.scope.some(p => pathname.startsWith(p));
+    // Normalize the incoming pathname the same way scope/exclude were normalized
+    // at construction — lowercase, decode unreserved percent-encoding.
+    // Path traversal (/../) is already resolved by new URL() before this runs.
+    // This ensures /api/PUBLIC/ and /api/pu%62lic/ match an exclude of /api/public/.
+    const normalized = normalizePath(pathname);
+
+    // startsWith check with boundary guard — prevents /api/public matching
+    // /api/publications. A prefix p matches only if the next char after p
+    // is '/' or the path ends exactly at p.
+    // Also handles the trailing-slash gap: an exclude of /api/public/ matches
+    // both /api/public/catalog AND the bare /api/public (no trailing slash),
+    // since most servers treat those as equivalent.
+    const matches = (p) => {
+      // Strip trailing slash from p for the comparison so both /api/public/
+      // and /api/public are treated as the same pattern boundary.
+      const base = p.endsWith('/') ? p.slice(0, -1) : p;
+      if (!normalized.startsWith(base)) return false;
+      const next = normalized[base.length];
+      return next === undefined || next === '/';       // end of path or subpath
+    };
+
+    if (this.exclude.some(matches)) return false;
+    return this.scope.some(matches);
   }
 
   _forward(incomingReq, bodyBuffer, inScope) {
@@ -119,6 +173,7 @@ class ProxyCore {
     }
 
     if (inScope) {
+      const rawHashVal = 'raw:' + crypto.createHash('sha256').update(upstream.body).digest('hex');
       this.store.record({
         method:        req.method,
         url:           req.url,
@@ -126,6 +181,7 @@ class ProxyCore {
         statusCode:    upstream.statusCode,
         contentLength: upstream.body.length,
         contentHash:   contentHash(upstream.body, upstream.headers['content-type'] || ''),
+        rawHash:       rawHashVal, // always stored — used for hash-family consistency check
       });
     }
 

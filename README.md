@@ -2,7 +2,7 @@
 
 ![CI](https://github.com/rodrigo-areyzaga/accguard/actions/workflows/ci.yml/badge.svg)
 
-**Authorization regression testing from real authenticated traffic.**
+**Confirmed unauthorized data replay detection from real authenticated traffic.**
 
 Broken access control remains the most common high-impact API vulnerability. Existing scanners can't reliably catch it — they don't have authenticated context. They've never logged into your app.
 
@@ -24,7 +24,7 @@ No install. No config. No accounts. Under 90 seconds from clone to first finding
 
 ## What it does
 
-accguard does one thing: it tells you whether user B can access user A's resources, using the traffic your tests already generate.
+accguard confirms one high-confidence failure mode: user B receiving the same protected resource representation originally observed under user A, using authenticated traffic your tests already generate.
 
 ```
 GET /api/orders/ord-1001
@@ -39,12 +39,12 @@ Authorization: Bearer bob-token
 HIGH — authorization regression — broken access control (OWASP A01)
        Mechanism: confirmed unauthorized data replay
        GET /api/orders/ord-1001
-       curl -H "Authorization: Bearer $TOKEN_B" ".../api/orders/ord-1001"
+       curl -s -H 'Authorization: Bearer '$TOKEN_B '.../api/orders/ord-1001'
 ```
 
 Bob received structurally identical authenticated data to Alice. The endpoint may be missing an ownership check.
 
-This is authorization regression testing: run it on every commit, catch access control failures the moment they're introduced, before they reach production.
+This is confirmed unauthorized data replay detection: run it on every commit, catch the moment an ownership check breaks before it reaches production.
 
 ---
 
@@ -128,6 +128,15 @@ const context = await browser.newContext({
 $env:PATH = [System.Environment]::GetEnvironmentVariable("PATH","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("PATH","User")
 ```
 Then run `node test/run.js` again.
+
+**Node.js native `fetch` (undici) does not honor `HTTP_PROXY`** and will bypass the proxy silently. If your test suite uses `fetch` directly or via a library that wraps undici, requests will not be recorded. Use `node-fetch` with explicit agent configuration, or switch to `axios` with proxy config for the test client:
+```javascript
+// node-fetch with proxy
+const { HttpProxyAgent } = require('http-proxy-agent');
+const fetch = require('node-fetch');
+const agent = new HttpProxyAgent('http://127.0.0.1:8877');
+fetch(url, { agent });
+```
 
 **Some environments bypass proxies for localhost by default.** If requests are not being recorded, try setting `NO_PROXY` to empty or using `--noproxy` explicitly:
 ```bash
@@ -268,11 +277,30 @@ The `if: always()` is important — without it, the artifact is skipped when acc
         · SHA256(normalised JSON) identical for both principals
 
       Reproduce:
-      curl -s -H "Authorization: Bearer $TOKEN_B" "http://localhost:3000/api/orders/ord-1001"
+      curl -s -H 'Authorization: Bearer '$TOKEN_B 'http://localhost:3000/api/orders/ord-1001'
 
 1 authorization regression detected.
 Each finding is deterministic — hashes either match or they don't.
 ```
+
+---
+
+## What accguard does not prove
+
+A clean accguard run means no identical unauthorized response replay was detected in the observed traffic. It does not prove the API has no authorization bugs.
+
+Specifically, accguard does not detect:
+
+- **Partial leaks** — if user B receives a subset of user A's data, the hashes differ and the finding is missed
+- **Volatile-field leaks** — if responses include per-request fields (timestamps, trace IDs, nonces), hashes differ even when the underlying data is identical
+- **POST/mutation-side BOLA** — only GET requests are replayed; write-side access control failures are out of scope
+- **GraphQL and body-based reads** — resource IDs in request bodies are not extracted or replayed
+- **Partial authorization** — an endpoint that returns different data to different users may still have an authorization bug accguard cannot see
+- **Business logic errors** — accguard does not model ownership intent, role hierarchies, or tenant boundaries
+
+These are intentional scope boundaries, not implementation gaps. The narrower the claim, the more trustworthy the finding.
+
+> accguard confirms one specific thing: user B received the same protected representation user A received. If the failure mode looks different from that, it is outside scope by design.
 
 ---
 
@@ -312,6 +340,24 @@ You must only use accguard against systems you own or have explicit written perm
 | `ACCGUARD_TOKEN_B`   | Second user's session token — required for detection |
 | `ACCGUARD_CONFIG`    | Path to config file — default `./accguard.config.json` |
 | `ACCGUARD_MAX_ENTRIES` | Max session store entries — default `10000` |
+| `ACCGUARD_COOKIE_NAME` | Force a specific cookie name for session extraction — use when your framework uses a non-standard name not in the default list |
+| `ACCGUARD_API_KEY_HEADER` | Header name for API key authentication — default `x-api-key`. Use if your API uses a custom header like `x-client-key` |
+
+**Supported auth schemes:** Bearer tokens, session cookies (13+ framework defaults), HTTP Basic, Token (Django REST Framework), ApiKey, and `X-API-Key` header. For non-Bearer schemes, accguard records and fingerprints the credential — replay will use `ACCGUARD_TOKEN_B` with the original scheme prefix.
+
+Simple prefix schemes (`Token abc123`, `ApiKey sk-xyz`, `Basic dXNlcjI6...`) can be replayed directly by setting `ACCGUARD_TOKEN_B` to a valid credential value. HTTP Digest is challenge-response and is generally not replay-safe — accguard can fingerprint it for recording, but replay will likely fail to authenticate unless `ACCGUARD_TOKEN_B` is a pre-computed full Digest header value.
+
+**Header fidelity:** replay reconstructs a minimal request (auth, accept, accept-encoding, original User-Agent). Headers like `Accept-Language`, `X-Tenant-ID`, or custom feature-flag headers carried by the original request are not replayed. If your app varies response content based on these headers, hashes may differ even when the underlying data is identical — a real BOLA may be missed. Add shared-context headers to your scope configuration notes for manual verification.
+
+accguard automatically recognizes session cookies from most frameworks including Express (`connect.sid`), Laravel (`laravel_session`), PHP (`PHPSESSID`), Java (`JSESSIONID`), NextAuth, ASP.NET, Rails (`_session_id`), and Django (`sessionid`). Set `ACCGUARD_COOKIE_NAME` only if your framework uses a non-standard name.
+
+Add `minObserved` to your config to catch proxy bypass silently:
+```json
+{
+  "minObserved": 5
+}
+```
+If fewer than `minObserved` requests are recorded, accguard exits with code `2` and explains the likely cause. This prevents a misconfigured proxy from producing a false green run.
 
 ---
 

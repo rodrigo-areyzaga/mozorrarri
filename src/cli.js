@@ -15,10 +15,32 @@ const VERSION         = '0.9.2';
 const CONSENT_FILE    = path.join(process.env.HOME || process.env.USERPROFILE || '.', '.accguard_consent');
 const REQUIRED_PHRASE = 'I own or have written authorization to test the target system';
 
+// Detect CI environments — GitHub Actions, CircleCI, Jenkins, GitLab CI,
+// Travis, and most others set CI=true automatically.
+const IS_CI = process.env.CI === 'true' || process.env.CI === '1';
+
 // ── Authorization gate ────────────────────────────────────────────────────────
+// In CI environments the gate is skipped — no TTY, no interactive prompt.
+// The CI operator accepted responsibility by configuring the workflow.
+// In local environments the gate is interactive on first run only.
 
 async function requireConsent() {
   if (fs.existsSync(CONSENT_FILE)) return;
+
+  if (IS_CI) {
+    // Write consent automatically in CI — operator accepted by configuring the job
+    try {
+      fs.writeFileSync(CONSENT_FILE, JSON.stringify({
+        agreedAt: new Date().toISOString(),
+        phrase:   'CI environment — operator accepted authorization responsibility',
+        ci:       true,
+      }), 'utf8');
+    } catch { /* non-fatal */ }
+    console.log('[accguard] CI environment detected — authorization gate skipped.');
+    console.log('[accguard] By running accguard in CI you confirm you own or have');
+    console.log('[accguard] written authorization to test the target system.\n');
+    return;
+  }
 
   console.log('\n' + '═'.repeat(66));
   console.log(`  accguard v${VERSION} — authorization required`);
@@ -42,7 +64,6 @@ async function requireConsent() {
     process.exit(1);
   }
 
-  // A10: wrap consent file write — failure here should not crash silently
   try {
     fs.writeFileSync(CONSENT_FILE, JSON.stringify({
       agreedAt: new Date().toISOString(),
@@ -50,13 +71,12 @@ async function requireConsent() {
     }), 'utf8');
     console.log('\n  Consent recorded. accguard is ready to use.\n');
   } catch (err) {
-    // Non-fatal — consent was given, file write failed (e.g. read-only home dir)
     console.warn(`\n  Warning: could not save consent record: ${err.message}`);
     console.warn('  You will be asked to confirm again on the next run.\n');
   }
 }
 
-// ── Config loading — A10 compliant ────────────────────────────────────────────
+// ── Config loading ────────────────────────────────────────────────────────────
 
 function loadConfig() {
   const configPath = path.resolve(process.env.ACCGUARD_CONFIG || 'accguard.config.json');
@@ -93,9 +113,10 @@ async function main() {
   const {
     target,
     scope,
-    exclude    = [],
-    port       = 8877,
-    outputFile = 'accguard-report.json',
+    exclude     = [],
+    port        = 8877,
+    outputFile  = 'accguard-report.json',
+    minObserved = 0,   // exit non-zero if fewer than this many requests observed
   } = config;
 
   const secondToken = process.env.ACCGUARD_TOKEN_B;
@@ -111,7 +132,6 @@ async function main() {
   const store = new SessionStore();
   const proxy = new ProxyCore({ target, scope, exclude, store, onFlush: () => triggerFlush() });
 
-  // A10: proxy listen failure should surface clearly
   try {
     await proxy.listen(port);
   } catch (err) {
@@ -122,10 +142,11 @@ async function main() {
 
   console.log(`\n  accguard v${VERSION}`);
   console.log(`  ${'─'.repeat(44)}`);
-  console.log(`  Proxy   : http://127.0.0.1:${port}`);
-  console.log(`  Target  : ${target}`);
-  console.log(`  Scope   : ${scope.join(', ')}`);
-  console.log(`  Replay  : ${secondToken ? 'enabled' : 'disabled (set ACCGUARD_TOKEN_B)'}`);
+  console.log(`  Proxy       : http://127.0.0.1:${port}`);
+  console.log(`  Target      : ${target}`);
+  console.log(`  Scope       : ${scope.join(', ')}`);
+  console.log(`  Replay      : ${secondToken ? 'enabled' : 'disabled (set ACCGUARD_TOKEN_B)'}`);
+  console.log(`  Min observed: ${minObserved > 0 ? minObserved : 'not set'}`);
   console.log(`  ${'─'.repeat(44)}`);
   console.log(`  Set HTTP_PROXY=http://127.0.0.1:${port} and run your tests.`);
   console.log(`  Press Ctrl+C or POST /--flush when done.\n`);
@@ -137,7 +158,19 @@ async function main() {
       await proxy.close();
     } catch (err) {
       console.error(`[accguard] Error closing proxy: ${err.message}`);
-      // Continue — findings are more important than a clean shutdown
+    }
+
+    // ── minObserved floor ─────────────────────────────────────────────────────
+    // If fewer than minObserved requests were recorded, the proxy may have been
+    // bypassed silently. Exit non-zero so CI fails visibly rather than green.
+    if (minObserved > 0 && store.size() < minObserved) {
+      console.error(`\n[accguard] PROXY BYPASS DETECTED`);
+      console.error(`[accguard] Expected at least ${minObserved} authenticated requests.`);
+      console.error(`[accguard] Only ${store.size()} were observed.`);
+      console.error(`[accguard] Check that HTTP_PROXY is set and your HTTP client respects it.`);
+      console.error(`[accguard] Note: Node fetch (undici), axios, and Playwright require`);
+      console.error(`[accguard] explicit proxy configuration — see README troubleshooting.\n`);
+      process.exit(2); // exit 2 = proxy bypass (distinct from exit 1 = findings)
     }
 
     if (!secondToken) {
@@ -151,7 +184,6 @@ async function main() {
       findings = await runReplay({ store, targetUrl: target, secondToken });
     } catch (err) {
       console.error(`[accguard] Replay failed: ${err.message}`);
-      // Print whatever was in the store before exiting
     }
 
     printFindings(findings, store);

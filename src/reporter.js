@@ -32,6 +32,13 @@ function printFindings(findings, store) {
   const divider = '─'.repeat(64);
   const cov     = coverageSummary(store);
 
+  // Separate by type for clear output.
+  // needs-review is now its own type (not broken-access-control) so it doesn't
+  // inflate the BOLA count or appear in the HIGH severity findings section.
+  const bola    = findings.filter(f => f.type === 'broken-access-control');
+  const misauth = findings.filter(f => f.type === 'possible-missing-authentication');
+  const review  = findings.filter(f => f.type === 'needs-review');
+
   console.log('\n' + divider);
   console.log('  accguard — authorization regression results');
   console.log(divider);
@@ -39,7 +46,9 @@ function printFindings(findings, store) {
   console.log(`  Replay candidates    : ${cov.replayed}`);
   console.log(`  Resource patterns    : ${cov.patterns}`);
   console.log(`  Auth mechanisms      : ${cov.mechanisms}`);
-  console.log(`  Findings             : ${findings.length}`);
+  console.log(`  Findings             : ${bola.length}`);
+  if (misauth.length > 0) console.log(`  Missing auth (!)     : ${misauth.length} — see below`);
+  if (review.length  > 0) console.log(`  Needs review         : ${review.length} — trivial payload`);
   console.log(divider);
 
   if (findings.length === 0) {
@@ -49,14 +58,14 @@ function printFindings(findings, store) {
     return;
   }
 
-  findings.forEach((f, i) => {
+  // BOLA findings — confirmed unauthorized data replay
+  bola.forEach((f, i) => {
     const confidence = f.confidence === 'confirmed'
       ? '✓ confirmed unauthorized data replay'
       : '~ possible unauthorized data replay';
 
-    console.log(`\n  [${i + 1}] ${f.severity.toUpperCase()}`);
-    console.log(`      Authorization regression  — broken access control (OWASP A01)`);
-    console.log(`      Mechanism                 — ${confidence}`);
+    console.log(`\n  [${i + 1}] ${f.severity.toUpperCase()} — broken access control (OWASP A01)`);
+    console.log(`      Mechanism    — ${confidence}`);
     console.log(`      ${f.method} ${f.path}`);
     console.log(`      Resource IDs : ${f.resourceIds.map(r => r.value).join(', ')}`);
     console.log(`      Auth type    : ${f.tokenType}`);
@@ -70,12 +79,45 @@ function printFindings(findings, store) {
     console.log(`      ${f.curl}`);
   });
 
-  console.log('\n' + divider);
-  console.log(`\n  ${findings.length} authorization regression${findings.length !== 1 ? 's' : ''} detected.`);
-  console.log(`  Each finding is deterministic — hashes either match or they don't.\n`);
+  // Missing authentication findings — reclassified from BOLA by anon probe
+  if (misauth.length > 0) {
+    console.log('\n' + divider);
+    console.log('\n  [!] POSSIBLE MISSING AUTHENTICATION\n');
+    console.log('      These endpoints returned identical data to an unauthenticated');
+    console.log('      request AND to user B. This may indicate:');
+    console.log('        · Intentionally public data (verify and add to exclude list)');
+    console.log('        · Missing authentication enforcement (critical — fix immediately)\n');
+
+    misauth.forEach((f, i) => {
+      console.log(`  [!${i + 1}] CRITICAL — ${f.method} ${f.path}`);
+      console.log(`       Resource IDs : ${f.resourceIds.map(r => r.value).join(', ')}`);
+      console.log(`       Reproduce    : ${f.curl}\n`);
+    });
+  }
+
+  // Needs-review findings — trivial payload hash match
+  if (review.length > 0) {
+    console.log(divider);
+    console.log('\n  [~] NEEDS REVIEW — trivial payload\n');
+    console.log('      These endpoints returned identical trivial responses ([], {}, null)');
+    console.log('      to both users. Hash matched but no per-user data was detected.');
+    console.log('      Likely false positive — verify manually.\n');
+
+    review.forEach((f, i) => {
+      console.log(`  [~${i + 1}] ${f.method} ${f.path}`);
+      console.log(`       Reproduce : ${f.curl}\n`);
+    });
+  }
+
+  console.log(divider);
+  if (bola.length > 0) {
+    console.log(`\n  ${bola.length} authorization regression${bola.length !== 1 ? 's' : ''} detected.`);
+    console.log(`  Each finding is deterministic — hashes either match or they don't.`);
+  }
+  console.log('');
 }
 
-// ── Save report — A10 compliant ───────────────────────────────────────────────
+// ── Save report ───────────────────────────────────────────────────────────────
 
 function saveReport(findings, store, outputPath) {
   const cov = coverageSummary(store);
@@ -87,7 +129,9 @@ function saveReport(findings, store, outputPath) {
       replayCandidates: cov.replayed,
       resourcePatterns: cov.patterns,
       authMechanisms:   cov.mechanisms,
-      findings:         findings.length,
+      findings:         findings.filter(f => f.type === 'broken-access-control').length,
+      missingAuth:      findings.filter(f => f.type === 'possible-missing-authentication').length,
+      needsReview:      findings.filter(f => f.confidence === 'needs-review').length,
     },
     findings,
   };
