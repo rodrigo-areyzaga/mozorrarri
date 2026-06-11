@@ -1,6 +1,6 @@
 {
   "name": "accguard",
-  "version": "0.9.2",
+  "version": "0.10.0",
   "description": "Authorization regression testing from real authenticated traffic",
   "main": "src/cli.js",
   "bin": { "accguard": "src/cli.js" },

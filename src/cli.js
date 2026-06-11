@@ -11,7 +11,7 @@ const { ProxyCore }                 = require('./proxy');
 const { runReplay }                 = require('./replay');
 const { printFindings, saveReport } = require('./reporter');
 
-const VERSION         = '0.9.2';
+const VERSION         = '0.10.0';
 const CONSENT_FILE    = path.join(process.env.HOME || process.env.USERPROFILE || '.', '.accguard_consent');
 const REQUIRED_PHRASE = 'I own or have written authorization to test the target system';
 

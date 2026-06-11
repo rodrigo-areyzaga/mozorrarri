@@ -241,7 +241,7 @@ class SessionStore {
   saveTo(filePath) {
     try {
       fs.writeFileSync(filePath, JSON.stringify({
-        version:     '0.9.2',
+        version:     '0.10.0',
         generatedAt: new Date().toISOString(),
         totalCount:  this.entries.length,
         entries:     this.entries,

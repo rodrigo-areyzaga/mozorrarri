@@ -1,6 +1,6 @@
-<svg width="100%" viewBox="0 0 680 580" xmlns="http://www.w3.org/2000/svg" role="img">
-  <title>accguard architecture — authorization regression testing</title>
-  <desc>How accguard sits between your test suite and your app, records authenticated requests, replays them as a second user, and reports confirmed unauthorized data replays.</desc>
+<svg width="100%" viewBox="0 0 680 680" xmlns="http://www.w3.org/2000/svg" role="img">
+  <title>accguard v0.10.0 architecture — authorization regression testing with exposure summary</title>
+  <desc>How accguard sits between your test suite and your app, records authenticated requests, replays them as a second user, enriches confirmed findings with exposure metadata, and reports audit-ready evidence.</desc>
 
   <defs>
     <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
@@ -16,14 +16,17 @@
       .box-teal   { fill: #E1F5EE; stroke: #1D9E75; }
       .box-green  { fill: #EAF3DE; stroke: #639922; }
       .box-coral  { fill: #FAECE7; stroke: #D85A30; }
+      .box-amber  { fill: #FFF8E1; stroke: #F9A825; }
       .th-purple  { fill: #3C3489; }
       .th-teal    { fill: #0F6E56; }
       .th-green   { fill: #3B6D11; }
       .th-coral   { fill: #993C1D; }
+      .th-amber   { fill: #E65100; }
       .ts-purple  { fill: #534AB7; }
       .ts-teal    { fill: #1D9E75; }
       .ts-green   { fill: #639922; }
       .ts-coral   { fill: #D85A30; }
+      .ts-amber   { fill: #F57F17; }
       @media (prefers-color-scheme: dark) {
         .th  { fill: #e0e0e0; }
         .ts  { fill: #999990; }
@@ -33,14 +36,17 @@
         .box-teal   { fill: #04342C; stroke: #1D9E75; }
         .box-green  { fill: #173404; stroke: #639922; }
         .box-coral  { fill: #4A1B0C; stroke: #D85A30; }
+        .box-amber  { fill: #3E2723; stroke: #F9A825; }
         .th-purple  { fill: #AFA9EC; }
         .th-teal    { fill: #5DCAA5; }
         .th-green   { fill: #97C459; }
         .th-coral   { fill: #F0997B; }
+        .th-amber   { fill: #FFD54F; }
         .ts-purple  { fill: #7F77DD; }
         .ts-teal    { fill: #5DCAA5; }
         .ts-green   { fill: #97C459; }
         .ts-coral   { fill: #F0997B; }
+        .ts-amber   { fill: #FFD54F; }
       }
     </style>
   </defs>
@@ -98,24 +104,39 @@
   <path d="M240 431 L530 431 L530 96" fill="none" class="arr" marker-end="url(#arrow)" stroke-dasharray="4 3"/>
   <text class="ts" x="460" y="420" text-anchor="middle">with user B token</text>
 
-  <!-- Arrow: replay → reporter -->
-  <line x1="150" y1="464" x2="150" y2="514" class="arr" marker-end="url(#arrow)"/>
+  <!-- Arrow: replay → exposure summary (confirmed BOLA only) -->
+  <line x1="150" y1="464" x2="150" y2="508" class="arr" marker-end="url(#arrow)"/>
+  <text class="ts" x="242" y="490" dominant-baseline="central">confirmed BOLA only</text>
+
+  <!-- ── Row 4.5: Exposure Summary ── -->
+
+  <rect x="60" y="508" width="180" height="66" rx="8" stroke-width="0.5" class="box-amber"/>
+  <text class="th th-amber" x="150" y="528" text-anchor="middle" dominant-baseline="central">Exposure Summary</text>
+  <text class="ts ts-amber" x="150" y="546" text-anchor="middle" dominant-baseline="central">field paths · classification signals</text>
+  <text class="ts ts-amber" x="150" y="562" text-anchor="middle" dominant-baseline="central">derived metadata only</text>
+
+  <!-- "raw body discarded" annotation -->
+  <text class="ts ts-coral" x="310" y="540" dominant-baseline="central" font-style="italic">raw body: in memory only</text>
+  <text class="ts ts-coral" x="310" y="556" dominant-baseline="central" font-style="italic">→ discarded after inspection</text>
+
+  <!-- Arrow: exposure summary → reporter -->
+  <line x1="150" y1="574" x2="150" y2="614" class="arr" marker-end="url(#arrow)"/>
 
   <!-- ── Row 5: Reporter + exits ── -->
 
-  <rect x="60" y="514" width="180" height="46" rx="8" stroke-width="0.5" class="box-teal"/>
-  <text class="th th-teal" x="150" y="537" text-anchor="middle" dominant-baseline="central">Reporter</text>
+  <rect x="60" y="614" width="180" height="46" rx="8" stroke-width="0.5" class="box-teal"/>
+  <text class="th th-teal" x="150" y="637" text-anchor="middle" dominant-baseline="central">Reporter</text>
 
-  <rect x="300" y="514" width="140" height="46" rx="8" stroke-width="0.5" class="box-green"/>
-  <text class="th th-green" x="370" y="532" text-anchor="middle" dominant-baseline="central">exit 0</text>
-  <text class="ts ts-green" x="370" y="550" text-anchor="middle" dominant-baseline="central">clean — no regressions</text>
+  <rect x="300" y="614" width="140" height="46" rx="8" stroke-width="0.5" class="box-green"/>
+  <text class="th th-green" x="370" y="632" text-anchor="middle" dominant-baseline="central">exit 0</text>
+  <text class="ts ts-green" x="370" y="650" text-anchor="middle" dominant-baseline="central">clean — no regressions</text>
 
-  <rect x="460" y="514" width="160" height="46" rx="8" stroke-width="0.5" class="box-coral"/>
-  <text class="th th-coral" x="540" y="532" text-anchor="middle" dominant-baseline="central">exit 1</text>
-  <text class="ts ts-coral" x="540" y="550" text-anchor="middle" dominant-baseline="central">regression detected</text>
+  <rect x="460" y="614" width="160" height="46" rx="8" stroke-width="0.5" class="box-coral"/>
+  <text class="th th-coral" x="540" y="632" text-anchor="middle" dominant-baseline="central">exit 1</text>
+  <text class="ts ts-coral" x="540" y="650" text-anchor="middle" dominant-baseline="central">regression detected</text>
 
   <!-- Arrow: reporter → exits -->
-  <line x1="240" y1="537" x2="298" y2="537" class="arr" marker-end="url(#arrow)"/>
-  <line x1="440" y1="537" x2="458" y2="537" class="arr" marker-end="url(#arrow)"/>
+  <line x1="240" y1="637" x2="298" y2="637" class="arr" marker-end="url(#arrow)"/>
+  <line x1="440" y1="637" x2="458" y2="637" class="arr" marker-end="url(#arrow)"/>
 
 </svg>

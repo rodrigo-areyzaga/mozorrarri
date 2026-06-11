@@ -1,15 +1,31 @@
 {
-  "version": "0.9.2",
-  "generatedAt": "2026-05-29T00:32:29.131Z",
+  "version": "0.10.0",
+  "generatedAt": "2026-06-11T12:21:36.866Z",
+  "reportType": "authorization-regression-evidence",
+  "privacy": {
+    "rawTokensStored": false,
+    "rawBodiesStored": false,
+    "rawValuesStored": false
+  },
+  "integrity": {
+    "reportSchema": "accguard-report-v1",
+    "generatedBy": "accguard 0.10.0",
+    "detectionPrimitive": "cross-user replay hash match",
+    "bodyRetentionPolicy": "not-stored",
+    "tokenRetentionPolicy": "fingerprint-only"
+  },
   "summary": {
     "observed": 9,
     "replayCandidates": 5,
     "resourcePatterns": 4,
     "authMechanisms": "bearer",
-    "findings": 5
+    "findings": 5,
+    "missingAuth": 0,
+    "needsReview": 0
   },
   "findings": [
     {
+      "findingId": "AG-20260611T122136Z-001",
       "severity": "high",
       "type": "broken-access-control",
       "confidence": "confirmed",
@@ -27,9 +43,65 @@
       "originalSize": 126,
       "replaySize": 126,
       "matchType": "semantic-hash",
-      "curl": "curl -s -H \"Authorization: Bearer $TOKEN_B\" \"http://127.0.0.1:3100/api/users/user-alice\""
+      "evidence": {
+        "originalContentHash": "json:54a38c2940e8b1ef24d0280b56e171e491c21e3c0cee8087758f148b975f311d",
+        "replayContentHash": "json:54a38c2940e8b1ef24d0280b56e171e491c21e3c0cee8087758f148b975f311d",
+        "originalRawHash": "raw:8c0748414a97b6f0f004ddbfadfea1c67db5200547f89b8c438188e6b5599f84",
+        "replayRawHash": "raw:8c0748414a97b6f0f004ddbfadfea1c67db5200547f89b8c438188e6b5599f84",
+        "matchedHash": "json:54a38c2940e8b1ef24d0280b56e171e491c21e3c0cee8087758f148b975f311d",
+        "matchType": "semantic-hash"
+      },
+      "request": {
+        "method": "GET",
+        "path": "/api/users/user-alice",
+        "queryPresent": false,
+        "authMechanism": "bearer",
+        "userAgentPreserved": false
+      },
+      "recordedAt": 1781180496839,
+      "replayedAt": "2026-06-11T12:21:36.857Z",
+      "curl": "curl -s -H 'Authorization: Bearer '$TOKEN_B 'http://127.0.0.1:3100/api/users/user-alice'",
+      "exposureSummary": {
+        "summaryGeneratedFromHash": "json:54a38c2940e8b1ef24d0280b56e171e491c21e3c0cee8087758f148b975f311d",
+        "contentType": "application/json",
+        "bodyBytes": 126,
+        "fieldPaths": [
+          "id",
+          "name",
+          "email",
+          "address"
+        ],
+        "fieldPathsTruncated": false,
+        "fieldPathLimit": 200,
+        "classificationSignals": [
+          {
+            "field": "id",
+            "signal": "identifier-like field name",
+            "classification": "resource_identifier",
+            "confidence": "high"
+          },
+          {
+            "field": "email",
+            "signal": "email-like field name",
+            "classification": "possible_pii",
+            "confidence": "high"
+          },
+          {
+            "field": "address",
+            "signal": "location-like field name",
+            "classification": "possible_location",
+            "confidence": "high"
+          }
+        ],
+        "sanitizedFieldPaths": false,
+        "sanitizedKeyTypes": [],
+        "sanitizedKeySegments": 0,
+        "rawBodyStored": false,
+        "rawValuesStored": false
+      }
     },
     {
+      "findingId": "AG-20260611T122136Z-002",
       "severity": "high",
       "type": "broken-access-control",
       "confidence": "confirmed",
@@ -51,9 +123,60 @@
       "originalSize": 122,
       "replaySize": 122,
       "matchType": "semantic-hash",
-      "curl": "curl -s -H \"Authorization: Bearer $TOKEN_B\" \"http://127.0.0.1:3100/api/orders/ord-1001\""
+      "evidence": {
+        "originalContentHash": "json:2c913a034728f094ab7f6633d7037d266f8baf3caa8b06f7c1e1b13b067f85af",
+        "replayContentHash": "json:2c913a034728f094ab7f6633d7037d266f8baf3caa8b06f7c1e1b13b067f85af",
+        "originalRawHash": "raw:b8807c56dcebeb0c3213aa17a6be169c0dbf023a43452608658e4f5ff77a2cf4",
+        "replayRawHash": "raw:b8807c56dcebeb0c3213aa17a6be169c0dbf023a43452608658e4f5ff77a2cf4",
+        "matchedHash": "json:2c913a034728f094ab7f6633d7037d266f8baf3caa8b06f7c1e1b13b067f85af",
+        "matchType": "semantic-hash"
+      },
+      "request": {
+        "method": "GET",
+        "path": "/api/orders/ord-1001",
+        "queryPresent": false,
+        "authMechanism": "bearer",
+        "userAgentPreserved": false
+      },
+      "recordedAt": 1781180496843,
+      "replayedAt": "2026-06-11T12:21:36.859Z",
+      "curl": "curl -s -H 'Authorization: Bearer '$TOKEN_B 'http://127.0.0.1:3100/api/orders/ord-1001'",
+      "exposureSummary": {
+        "summaryGeneratedFromHash": "json:2c913a034728f094ab7f6633d7037d266f8baf3caa8b06f7c1e1b13b067f85af",
+        "contentType": "application/json",
+        "bodyBytes": 122,
+        "fieldPaths": [
+          "id",
+          "owner",
+          "item",
+          "total",
+          "status"
+        ],
+        "fieldPathsTruncated": false,
+        "fieldPathLimit": 200,
+        "classificationSignals": [
+          {
+            "field": "id",
+            "signal": "identifier-like field name",
+            "classification": "resource_identifier",
+            "confidence": "high"
+          },
+          {
+            "field": "total",
+            "signal": "financial-like field name",
+            "classification": "possible_financial",
+            "confidence": "high"
+          }
+        ],
+        "sanitizedFieldPaths": false,
+        "sanitizedKeyTypes": [],
+        "sanitizedKeySegments": 0,
+        "rawBodyStored": false,
+        "rawValuesStored": false
+      }
     },
     {
+      "findingId": "AG-20260611T122136Z-003",
       "severity": "high",
       "type": "broken-access-control",
       "confidence": "confirmed",
@@ -75,9 +198,60 @@
       "originalSize": 113,
       "replaySize": 113,
       "matchType": "semantic-hash",
-      "curl": "curl -s -H \"Authorization: Bearer $TOKEN_B\" \"http://127.0.0.1:3100/api/orders/ord-1002\""
+      "evidence": {
+        "originalContentHash": "json:9895cec2aead9eac9b7d5d96ef9457d5eeca5c379733775e7bbd191c30754142",
+        "replayContentHash": "json:9895cec2aead9eac9b7d5d96ef9457d5eeca5c379733775e7bbd191c30754142",
+        "originalRawHash": "raw:7b7fd46c0791e467b2a9d6c79cf6b83db4edf4492dd06dc6e5b9e9f94cae6609",
+        "replayRawHash": "raw:7b7fd46c0791e467b2a9d6c79cf6b83db4edf4492dd06dc6e5b9e9f94cae6609",
+        "matchedHash": "json:9895cec2aead9eac9b7d5d96ef9457d5eeca5c379733775e7bbd191c30754142",
+        "matchType": "semantic-hash"
+      },
+      "request": {
+        "method": "GET",
+        "path": "/api/orders/ord-1002",
+        "queryPresent": false,
+        "authMechanism": "bearer",
+        "userAgentPreserved": false
+      },
+      "recordedAt": 1781180496845,
+      "replayedAt": "2026-06-11T12:21:36.861Z",
+      "curl": "curl -s -H 'Authorization: Bearer '$TOKEN_B 'http://127.0.0.1:3100/api/orders/ord-1002'",
+      "exposureSummary": {
+        "summaryGeneratedFromHash": "json:9895cec2aead9eac9b7d5d96ef9457d5eeca5c379733775e7bbd191c30754142",
+        "contentType": "application/json",
+        "bodyBytes": 113,
+        "fieldPaths": [
+          "id",
+          "owner",
+          "item",
+          "total",
+          "status"
+        ],
+        "fieldPathsTruncated": false,
+        "fieldPathLimit": 200,
+        "classificationSignals": [
+          {
+            "field": "id",
+            "signal": "identifier-like field name",
+            "classification": "resource_identifier",
+            "confidence": "high"
+          },
+          {
+            "field": "total",
+            "signal": "financial-like field name",
+            "classification": "possible_financial",
+            "confidence": "high"
+          }
+        ],
+        "sanitizedFieldPaths": false,
+        "sanitizedKeyTypes": [],
+        "sanitizedKeySegments": 0,
+        "rawBodyStored": false,
+        "rawValuesStored": false
+      }
     },
     {
+      "findingId": "AG-20260611T122136Z-004",
       "severity": "high",
       "type": "broken-access-control",
       "confidence": "confirmed",
@@ -99,9 +273,54 @@
       "originalSize": 102,
       "replaySize": 102,
       "matchType": "semantic-hash",
-      "curl": "curl -s -H \"Authorization: Bearer $TOKEN_B\" \"http://127.0.0.1:3100/api/payment/pay-1\""
+      "evidence": {
+        "originalContentHash": "json:02c1b9ca8f76fd38cd4a90dab50f4c48075682214dcfdd63aff04737d9220728",
+        "replayContentHash": "json:02c1b9ca8f76fd38cd4a90dab50f4c48075682214dcfdd63aff04737d9220728",
+        "originalRawHash": "raw:b4c9a9feb7f1b200a1203847a6a3ba3312316aa939275f15557936fc5a44561d",
+        "replayRawHash": "raw:b4c9a9feb7f1b200a1203847a6a3ba3312316aa939275f15557936fc5a44561d",
+        "matchedHash": "json:02c1b9ca8f76fd38cd4a90dab50f4c48075682214dcfdd63aff04737d9220728",
+        "matchType": "semantic-hash"
+      },
+      "request": {
+        "method": "GET",
+        "path": "/api/payment/pay-1",
+        "queryPresent": false,
+        "authMechanism": "bearer",
+        "userAgentPreserved": false
+      },
+      "recordedAt": 1781180496847,
+      "replayedAt": "2026-06-11T12:21:36.863Z",
+      "curl": "curl -s -H 'Authorization: Bearer '$TOKEN_B 'http://127.0.0.1:3100/api/payment/pay-1'",
+      "exposureSummary": {
+        "summaryGeneratedFromHash": "json:02c1b9ca8f76fd38cd4a90dab50f4c48075682214dcfdd63aff04737d9220728",
+        "contentType": "application/json",
+        "bodyBytes": 102,
+        "fieldPaths": [
+          "id",
+          "owner",
+          "type",
+          "last4",
+          "expiry"
+        ],
+        "fieldPathsTruncated": false,
+        "fieldPathLimit": 200,
+        "classificationSignals": [
+          {
+            "field": "id",
+            "signal": "identifier-like field name",
+            "classification": "resource_identifier",
+            "confidence": "high"
+          }
+        ],
+        "sanitizedFieldPaths": false,
+        "sanitizedKeyTypes": [],
+        "sanitizedKeySegments": 0,
+        "rawBodyStored": false,
+        "rawValuesStored": false
+      }
     },
     {
+      "findingId": "AG-20260611T122136Z-005",
       "severity": "high",
       "type": "broken-access-control",
       "confidence": "confirmed",
@@ -123,7 +342,50 @@
       "originalSize": 124,
       "replaySize": 124,
       "matchType": "semantic-hash",
-      "curl": "curl -s -H \"Authorization: Bearer $TOKEN_B\" \"http://127.0.0.1:3100/api/documents/doc-101\""
+      "evidence": {
+        "originalContentHash": "json:9c0d301257b47270ed08cb5ddfc93da43b99c268c45253c8601c3d663f75ca2a",
+        "replayContentHash": "json:9c0d301257b47270ed08cb5ddfc93da43b99c268c45253c8601c3d663f75ca2a",
+        "originalRawHash": "raw:57a2f36ad423eb7ea996dc5f02f789671e855d8a79fe6e8e69199c26010133ef",
+        "replayRawHash": "raw:57a2f36ad423eb7ea996dc5f02f789671e855d8a79fe6e8e69199c26010133ef",
+        "matchedHash": "json:9c0d301257b47270ed08cb5ddfc93da43b99c268c45253c8601c3d663f75ca2a",
+        "matchType": "semantic-hash"
+      },
+      "request": {
+        "method": "GET",
+        "path": "/api/documents/doc-101",
+        "queryPresent": false,
+        "authMechanism": "bearer",
+        "userAgentPreserved": false
+      },
+      "recordedAt": 1781180496851,
+      "replayedAt": "2026-06-11T12:21:36.864Z",
+      "curl": "curl -s -H 'Authorization: Bearer '$TOKEN_B 'http://127.0.0.1:3100/api/documents/doc-101'",
+      "exposureSummary": {
+        "summaryGeneratedFromHash": "json:9c0d301257b47270ed08cb5ddfc93da43b99c268c45253c8601c3d663f75ca2a",
+        "contentType": "application/json",
+        "bodyBytes": 124,
+        "fieldPaths": [
+          "id",
+          "owner",
+          "title",
+          "content"
+        ],
+        "fieldPathsTruncated": false,
+        "fieldPathLimit": 200,
+        "classificationSignals": [
+          {
+            "field": "id",
+            "signal": "identifier-like field name",
+            "classification": "resource_identifier",
+            "confidence": "high"
+          }
+        ],
+        "sanitizedFieldPaths": false,
+        "sanitizedKeyTypes": [],
+        "sanitizedKeySegments": 0,
+        "rawBodyStored": false,
+        "rawValuesStored": false
+      }
     }
   ]
 }

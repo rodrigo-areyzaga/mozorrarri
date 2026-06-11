@@ -4,6 +4,7 @@ const http   = require('http');
 const https  = require('https');
 const crypto = require('crypto');
 const { URL } = require('url');
+const { buildExposureSummary } = require('./exposure-summary');
 
 // Shell-safe quoting for curl reproduction commands.
 // Wraps a value in single quotes, escaping any embedded single quotes.
@@ -217,8 +218,8 @@ function replayRequest({ targetUrl, entry, secondToken }) {
         'accept-encoding': 'identity', // force uncompressed — matches recorded hash
         // Preserve original User-Agent — servers that vary response content by UA
         // (bot detection, content adaptation) would produce different hashes if
-        // we sent accguard/0.9.2. Use the original UA to maximize replay fidelity.
-        'user-agent':      entry.userAgent || 'accguard/0.9.2',
+        // we sent accguard/0.10.0. Use the original UA to maximize replay fidelity.
+        'user-agent':      entry.userAgent || 'accguard/0.10.0',
         ...authHeaders(secondToken, entry),
       },
     };
@@ -254,6 +255,11 @@ async function runReplay({ store, targetUrl, secondToken, logger }) {
   const entries  = store.replayable();
   const findings = [];
 
+  // Run timestamp for finding IDs — ISO compact format for human readability.
+  // All findings in this run share the same timestamp prefix.
+  const runTimestamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d+Z$/, 'Z');
+  let findingSeq = 0;
+
   if (!secondToken) {
     log.log('[accguard] ACCGUARD_TOKEN_B not set — skipping replay.');
     return findings;
@@ -272,7 +278,7 @@ async function runReplay({ store, targetUrl, secondToken, logger }) {
         path:     '/',
         method:   'HEAD',
         headers:  { ...authHeaders(secondToken, entries[0] || { tokenType: 'bearer', cookieName: null }),
-                    'user-agent': (entries[0] && entries[0].userAgent) || 'accguard/0.9.2-canary' },
+                    'user-agent': (entries[0] && entries[0].userAgent) || 'accguard/0.10.0-canary' },
       }, res => resolve(res.statusCode));
       req.on('error', reject);
       req.setTimeout(3000, () => { req.destroy(); reject(new Error('timeout')); });
@@ -357,7 +363,7 @@ async function runReplay({ store, targetUrl, secondToken, logger }) {
               'accept-encoding': 'identity',
               // Use original User-Agent — same as replay to avoid bot-detection
               // content variation causing a classification mismatch.
-              'user-agent':      entry.userAgent || 'accguard/0.9.2-anon',
+              'user-agent':      entry.userAgent || 'accguard/0.10.0-anon',
               // No Authorization or Cookie header — truly unauthenticated
             },
           }, res => {
@@ -409,7 +415,41 @@ async function runReplay({ store, targetUrl, secondToken, logger }) {
                          : actualType === 'needs-review'                    ? 'info'
                          : 'high';
 
-    findings.push({
+    // Determine match type and the evidence hash from a SINGLE source of truth
+    // so they can never drift apart. semanticMatch requires both content hashes
+    // to exist and be equal (undefined === undefined must NOT count as a match).
+    const semanticMatch = !!(result.contentHash && entry.contentHash &&
+                             result.contentHash === entry.contentHash);
+    const rawMatch      = !!(entry.rawHash && result.rawHash &&
+                             entry.rawHash === result.rawHash);
+
+    const matchType = semanticMatch ? 'semantic-hash'
+                    : rawMatch       ? 'raw-hash-fallback'
+                    : 'size-proximity';
+
+    // Evidence hash — the hash that actually proved the match.
+    // Derived from the same booleans as matchType: the invariant
+    // exposureSummary.summaryGeneratedFromHash === evidence.matchedHash holds
+    // by construction because both read this one value.
+    const evidenceHash = semanticMatch ? result.contentHash
+                       : rawMatch       ? result.rawHash
+                       : result.contentHash;
+
+    // Exposure Summary — derived metadata for confirmed BOLA findings only.
+    // Does not affect detection. Does not store raw values or bodies.
+    // Runs only when: actualType === 'broken-access-control' AND finalConfidence === 'confirmed'
+    const exposureSummary =
+      actualType === 'broken-access-control' && finalConfidence === 'confirmed'
+        ? buildExposureSummary(result.body, result.contentType, evidenceHash)
+        : null;
+
+    // Finding ID — stable reference for reports.
+    // Format: AG-<runTimestamp>-<3-digit sequence>
+    findingSeq++;
+    const findingId = `AG-${runTimestamp}-${String(findingSeq).padStart(3, '0')}`;
+
+    const finding = {
+      findingId,
       severity:       actualSeverity,
       type:           actualType,
       confidence:     confidence === 'needs-review' ? 'needs-review' : finalConfidence,
@@ -421,11 +461,33 @@ async function runReplay({ store, targetUrl, secondToken, logger }) {
       replayStatus:   result.statusCode,
       originalSize:   entry.contentLength,
       replaySize:     result.bodyLength,
-      matchType:      result.contentHash === entry.contentHash ? 'semantic-hash'
-                    : (entry.rawHash && result.rawHash && entry.rawHash === result.rawHash) ? 'raw-hash-fallback'
-                    : 'size-proximity',
+      matchType,
+      evidence: {
+        originalContentHash: entry.contentHash || null,
+        replayContentHash:   result.contentHash || null,
+        originalRawHash:     entry.rawHash || null,
+        replayRawHash:       result.rawHash || null,
+        matchedHash:         evidenceHash,
+        matchType,
+      },
+      request: {
+        method:            entry.method,
+        path:              entry.path + entry.query,
+        queryPresent:      entry.query !== '',
+        authMechanism:     entry.tokenType || 'bearer',
+        userAgentPreserved: !!(entry.userAgent),
+      },
+      recordedAt:     entry.recordedAt,
+      replayedAt:     new Date().toISOString(),
       curl:           `curl -s ${authFlag} ${shellQuote(targetUrl + entry.path + entry.query)}`,
-    });
+    };
+
+    // Attach exposure summary only if non-null (confirmed BOLA with JSON body)
+    if (exposureSummary) {
+      finding.exposureSummary = exposureSummary;
+    }
+
+    findings.push(finding);
   }
 
   return findings;

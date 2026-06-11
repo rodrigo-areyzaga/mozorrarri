@@ -2,6 +2,31 @@
 
 const fs = require('fs');
 
+// ── Why-flagged explanation ───────────────────────────────────────────────────
+// Pure function: given a finding, returns the bullet lines explaining why it was
+// flagged. Branches on matchType AND the actual evidence hash prefix so the
+// wording always matches the proof artifact (e.g. big-int JSON matched via raw
+// bytes must not claim "JSON normalisation"). Exported for testing.
+
+function whyFlagged(f) {
+  const lines = ['Same endpoint replayed under a different authenticated user'];
+  const matchedHash = (f.evidence && f.evidence.matchedHash) || '';
+  if (f.matchType === 'raw-hash-fallback') {
+    lines.push('Raw response hashes matched byte-for-byte after semantic hash families differed');
+    lines.push('SHA256(raw bytes) identical for both principals');
+  } else if (f.matchType === 'size-proximity') {
+    lines.push('Response sizes within 5% of each other');
+    lines.push('Possible unauthorized data replay — verify manually');
+  } else if (matchedHash.startsWith('raw:')) {
+    lines.push('Response hashes matched using raw-byte hashing');
+    lines.push('JSON normalisation bypassed (e.g. big integers); raw-byte SHA256 identical for both principals');
+  } else {
+    lines.push('Response hashes matched after JSON normalisation');
+    lines.push('SHA256(normalised JSON) identical for both principals');
+  }
+  return lines;
+}
+
 // ── Coverage summary ──────────────────────────────────────────────────────────
 
 function coverageSummary(store) {
@@ -65,6 +90,7 @@ function printFindings(findings, store) {
       : '~ possible unauthorized data replay';
 
     console.log(`\n  [${i + 1}] ${f.severity.toUpperCase()} — broken access control (OWASP A01)`);
+    if (f.findingId) console.log(`      Finding ID   — ${f.findingId}`);
     console.log(`      Mechanism    — ${confidence}`);
     console.log(`      ${f.method} ${f.path}`);
     console.log(`      Resource IDs : ${f.resourceIds.map(r => r.value).join(', ')}`);
@@ -72,9 +98,43 @@ function printFindings(findings, store) {
     console.log(`      User A got   : ${f.originalStatus} (${f.originalSize} bytes)`);
     console.log(`      User B got   : ${f.replayStatus}  (${f.replaySize} bytes)`);
     console.log(`\n      Why flagged:`);
-    console.log(`        · Same endpoint replayed under a different authenticated user`);
-    console.log(`        · Response hashes matched after JSON normalisation`);
-    console.log(`        · SHA256(normalised JSON) identical for both principals`);
+    for (const line of whyFlagged(f)) {
+      console.log(`        · ${line}`);
+    }
+
+    // Exposure Summary — derived metadata, no raw values
+    if (f.exposureSummary) {
+      const es = f.exposureSummary;
+      if (es.skipped) {
+        console.log(`\n      Exposure Summary: skipped (${es.reason})`);
+        if (es.reason === 'body-too-large') {
+          console.log(`        Response body (${es.bodyBytes} bytes) exceeded analysis limit (${es.bodyByteLimit} bytes)`);
+        }
+        console.log(`        Raw body stored: no`);
+        console.log(`        Raw values     : no`);
+        console.log(`        Finding remains valid — only enrichment was skipped`);
+      } else {
+        console.log(`\n      Exposure Summary:`);
+        console.log(`        Fields exposed : ${es.fieldPaths.slice(0, 20).join(', ')}${es.fieldPaths.length > 20 ? ' ...' : ''}`);
+        if (es.fieldPathsTruncated) {
+          console.log(`        Field list truncated at ${es.fieldPathLimit} paths`);
+        }
+        if (es.classificationSignals.length > 0) {
+          const signalTypes = [...new Set(es.classificationSignals.map(s => s.classification))];
+          console.log(`        Signals        : ${signalTypes.join(', ')}`);
+          for (const sig of es.classificationSignals) {
+            console.log(`          ${sig.field} → ${sig.classification}`);
+          }
+        }
+        if (es.sanitizedFieldPaths) {
+          console.log(`        Sanitized keys : ${es.sanitizedKeySegments} segment(s) — ${es.sanitizedKeyTypes.join(', ')}`);
+        }
+        console.log(`        Raw body stored: no`);
+        console.log(`        Raw values     : no`);
+        console.log(`        Evidence hash  : ${es.summaryGeneratedFromHash}`);
+      }
+    }
+
     console.log(`\n      Reproduce:`);
     console.log(`      ${f.curl}`);
   });
@@ -122,8 +182,21 @@ function printFindings(findings, store) {
 function saveReport(findings, store, outputPath) {
   const cov = coverageSummary(store);
   const report = {
-    version:     '0.9.2',
+    version:     '0.10.0',
     generatedAt: new Date().toISOString(),
+    reportType:  'authorization-regression-evidence',
+    privacy: {
+      rawTokensStored: false,
+      rawBodiesStored: false,
+      rawValuesStored: false,
+    },
+    integrity: {
+      reportSchema:        'accguard-report-v1',
+      generatedBy:         'accguard 0.10.0',
+      detectionPrimitive:  'cross-user replay hash match',
+      bodyRetentionPolicy: 'not-stored',
+      tokenRetentionPolicy: 'fingerprint-only',
+    },
     summary: {
       observed:         cov.observed,
       replayCandidates: cov.replayed,
@@ -145,4 +218,4 @@ function saveReport(findings, store, outputPath) {
   }
 }
 
-module.exports = { printFindings, saveReport, coverageSummary };
+module.exports = { printFindings, saveReport, coverageSummary, whyFlagged };

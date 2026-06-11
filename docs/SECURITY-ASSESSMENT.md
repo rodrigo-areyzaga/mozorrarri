@@ -1,7 +1,7 @@
-# accguard v0.9.2-FINAL — Adversarial Security Assessment
+# accguard v0.10.0 — Adversarial Security Assessment
 
-**Build:** FINAL — 209 built-in tests passing
-**Assessment:** Twelve rounds. 85+ attack vectors. 13 harnesses. Zero open findings.
+**Build:** v0.10.0 — 536 built-in tests passing
+**Assessment:** Twelve adversarial rounds (v0.9.2) plus Exposure Summary verification (v0.10.0). 85+ attack vectors. 13 harnesses. Zero open findings.
 
 ---
 
@@ -34,6 +34,27 @@ All curl reproduction commands use POSIX single-quote escaping (shellQuote) for 
 
 ### Documented scope boundaries (not bugs)
 Shared authenticated resources → confirmed (mitigated by exclude list). Semantic-200 error bodies → confirmed. Volatile fields → hash diverges (awaiting ignoreKeys). Partial leaks → hash diverges. Non-identity-field array reorder → hash diverges. Opaque resource IDs → not replayable. Write-side BOLA → GET-only. HTTPS → not proxied. Post-hoc replay timing → resource deletion between record and replay.
+
+### Exposure Summary (v0.10.0)
+Derived metadata enrichment for confirmed BOLA findings. Does not affect detection or pass/fail behavior. Threat model:
+
+- Does not store raw response bodies
+- Does not store raw field values
+- Does not affect detection logic or pass/fail
+- Runs only after confirmed authorization failure (confirmed broken-access-control gate)
+- Uses bounded traversal (MAX_DEPTH=12, MAX_FIELD_PATHS=200, MAX_ARRAY_ITEMS=5)
+- Uses conservative classification signals (field-name-based only, not value-based)
+- Non-JSON responses are not summarized
+- Deep objects and large responses may be truncated
+- Classification is a signal, not a verdict — field-name match, not value inspection
+- Dynamic/sensitive JSON keys (email, UUID, token, long numeric, high-entropy, control-char) are replaced with inert placeholders before storage — sensitive data cannot leak through a field-path segment
+- Pre-parse body-size ceiling (1 MB) — oversized responses skip analysis with a `skipped: true` summary; the confirmed finding is never suppressed
+- Depth cap is exact: the deepest stored path has exactly MAX_DEPTH (12) segments
+- Evidence-hash invariant: `exposureSummary.summaryGeneratedFromHash === evidence.matchedHash` for every finding (normal and skipped); `matchType` and `matchedHash` derive from a single source so they cannot drift
+- Sanitization is disclosed honestly: when dynamic keys are replaced, the summary reports how many segments and which placeholder types, so path deduplication cannot make the report look more precise than the underlying data
+- Reporter wording matches the proof: `whyFlagged()` branches on the actual evidence-hash prefix, so a big-int JSON match proved by raw bytes is never described as "JSON normalisation"
+- URL/path privacy is a documented boundary: `path`, `resourceIds`, and `curl` are preserved verbatim for reproducibility and are NOT sanitized; sensitive data in URLs will appear in reports by design (tests lock this so a silent change is caught)
+- Reports explicitly declare privacy model (rawTokensStored, rawBodiesStored, rawValuesStored: false)
 
 ---
 
@@ -69,3 +90,11 @@ Proxy survived randomized stress testing (40 fuzz requests: random paths, 10KB U
 | 11 | authFlag non-variable parts in double quotes | shellQuote applied to all dynamic authFlag components |
 | FINAL | Scheme-less auth misidentifies token as scheme | Empty scheme for space-less Authorization values |
 | FINAL | Bare known-scheme headers recorded as auth | KNOWN_SCHEMES guard falls through |
+| 0.10.0 | Exposure Summary added | New module: field-path extraction, classification signals, evidence metadata, privacy/integrity report sections. |
+| 0.10.0 | Sensitive data leak via JSON keys | Key sanitization — dynamic/sensitive keys replaced with inert placeholders |
+| 0.10.0 | Unbounded analysis cost on large bodies | 1 MB pre-parse ceiling; oversized bodies skip enrichment, finding still reported |
+| 0.10.0 | Depth-cap off-by-one (13 segments stored for MAX_DEPTH=12) | Guard changed to `depth >= MAX_DEPTH`; deepest path now exactly 12 segments. |
+| 0.10.0 | matchType / evidenceHash could diverge on undefined-hash edge | Both now derive from a single pair of booleans; invariant `summaryGeneratedFromHash === evidence.matchedHash` holds by construction |
+| 0.10.0 | Sanitization collision hid that multiple dynamic keys existed | Added honest `sanitizedFieldPaths` / `sanitizedKeyTypes` / `sanitizedKeySegments` disclosure. |
+| 0.10.0 | Reporter claimed "JSON normalisation" for raw-prefixed (big-int) hashes | `whyFlagged()` now branches on the actual hash prefix; wording matches the proof artifact |
+| 0.10.0 | Sensitive data in URLs not addressed | Documented as a conscious reproducibility tradeoff; tests lock the behavior so a future silent change is caught. 536 tests passing. |

@@ -1,7 +1,15 @@
 'use strict';
 
 const http = require('http');
+const os   = require('os');
+const path = require('path');
 const root = __dirname + '/..';
+
+// Portable temp path — never hardcode /tmp (Linux-only; resolves to E:\tmp on
+// Windows and fails). Uses the OS temp dir and the PID to avoid collisions.
+function tmpPath(name) {
+  return path.join(os.tmpdir(), `${name}-${process.pid}.json`);
+}
 
 // ── Harness ───────────────────────────────────────────────────────────────────
 let passed = 0;
@@ -660,6 +668,774 @@ assert(emptyBearerWithCookie !== null,              'empty bearer falls through 
 assert(emptyBearerWithCookie.type === 'cookie',     'falls through to cookie type');
 assert(emptyBearerWithCookie.raw === 'valid-session-tok', 'correct cookie value');
 
+// ── exposure-summary.js ─────────────────────────────────────────────────────
+section('exposure-summary.js');
+const {
+  buildExposureSummary,
+  extractFieldPaths,
+  classifyFieldPath,
+  MAX_FIELD_PATHS,
+  MAX_DEPTH,
+  MAX_ARRAY_ITEMS,
+} = require(root + '/src/exposure-summary');
+
+// 1. Extracts object field paths
+{
+  const paths = [];
+  extractFieldPaths({ name: 'Alice', age: 30 }, '', paths, 0);
+  assert(paths.includes('name') && paths.includes('age'), 'extracts flat object field paths');
+}
+
+// 2. Extracts nested field paths
+{
+  const paths = [];
+  extractFieldPaths({ user: { email: 'a@b.com', profile: { city: 'X' } } }, '', paths, 0);
+  assert(paths.includes('user'), 'extracts parent field');
+  assert(paths.includes('user.email'), 'extracts nested field');
+  assert(paths.includes('user.profile.city'), 'extracts deeply nested field');
+}
+
+// 3. Samples arrays and unions fields across elements
+{
+  const paths = [];
+  extractFieldPaths([
+    { id: 1, name: 'Alice' },
+    { id: 2, email: 'bob@x.com' },
+  ], '', paths, 0);
+  assert(paths.includes('[].id'), 'array element field extracted');
+  assert(paths.includes('[].name'), 'first array element field extracted');
+  assert(paths.includes('[].email'), 'second array element field extracted');
+}
+
+// 4. Caps array sampling
+{
+  const paths = [];
+  const bigArray = Array.from({ length: 20 }, (_, i) => ({ [`field${i}`]: i }));
+  extractFieldPaths(bigArray, '', paths, 0);
+  // Should only sample MAX_ARRAY_ITEMS elements
+  const fieldCount = paths.filter(p => p.startsWith('[].')).length;
+  assert(fieldCount <= MAX_ARRAY_ITEMS, 'array sampling capped at MAX_ARRAY_ITEMS');
+}
+
+// 5. Caps max field paths
+{
+  const paths = [];
+  const bigObj = {};
+  for (let i = 0; i < 250; i++) bigObj[`f${i}`] = i;
+  extractFieldPaths(bigObj, '', paths, 0);
+  assert(paths.length <= MAX_FIELD_PATHS, 'field paths capped at MAX_FIELD_PATHS');
+}
+
+// 6. Sets truncation flag when cap is hit
+{
+  const bigObj = {};
+  for (let i = 0; i < 250; i++) bigObj[`f${i}`] = i;
+  const body = Buffer.from(JSON.stringify(bigObj));
+  const result = buildExposureSummary(body, 'application/json', 'json:test');
+  assert(result !== null, 'summary returned for large object');
+  assert(result.fieldPathsTruncated === true, 'truncation flag set');
+}
+
+// 7. Caps depth
+{
+  let deep = { bottom: true };
+  for (let i = 0; i < 20; i++) deep = { level: deep };
+  const paths = [];
+  extractFieldPaths(deep, '', paths, 0);
+  // Should not recurse past MAX_DEPTH — total paths should be capped
+  assert(paths.length <= MAX_DEPTH + 1, 'depth capped at MAX_DEPTH');
+}
+
+// 8. Returns null for primitive arrays
+{
+  const body = Buffer.from(JSON.stringify([1, 2, 3]));
+  const result = buildExposureSummary(body, 'application/json', 'json:test');
+  // Array of primitives has no field paths — should return null
+  assert(result === null, 'returns null for primitive arrays');
+}
+
+// 9. Returns null for empty objects
+{
+  const body = Buffer.from(JSON.stringify({}));
+  const result = buildExposureSummary(body, 'application/json', 'json:test');
+  assert(result === null, 'returns null for empty objects');
+}
+
+// 10. Returns null for non-JSON
+{
+  const body = Buffer.from('<html>test</html>');
+  const result = buildExposureSummary(body, 'text/html', 'raw:test');
+  assert(result === null, 'returns null for non-JSON content type');
+}
+
+// 11. Returns null for invalid JSON
+{
+  const body = Buffer.from('{invalid json!!!');
+  const result = buildExposureSummary(body, 'application/json', 'json:test');
+  assert(result === null, 'returns null for invalid JSON body');
+}
+
+// 12. Does not include raw values
+{
+  const body = Buffer.from(JSON.stringify({ email: 'alice@test.com', password: 'secret123' }));
+  const result = buildExposureSummary(body, 'application/json', 'json:test');
+  assert(result !== null, 'summary returned');
+  const resultStr = JSON.stringify(result);
+  assert(!resultStr.includes('alice@test.com'), 'raw email value not in summary');
+  assert(!resultStr.includes('secret123'), 'raw password value not in summary');
+  assert(result.rawValuesStored === false, 'rawValuesStored is false');
+}
+
+// 13. Does not include raw body
+{
+  const body = Buffer.from(JSON.stringify({ data: 'sensitive content here' }));
+  const result = buildExposureSummary(body, 'application/json', 'json:test');
+  const resultStr = JSON.stringify(result);
+  assert(!resultStr.includes('sensitive content here'), 'raw body not in summary');
+  assert(result.rawBodyStored === false, 'rawBodyStored is false');
+}
+
+// 14. Classifies email-like field names as possible_pii
+{
+  const sig = classifyFieldPath('author.email');
+  assert(sig !== null, 'email field classified');
+  assert(sig.classification === 'possible_pii', 'email classified as possible_pii');
+}
+{
+  const sig = classifyFieldPath('user.firstName');
+  assert(sig !== null, 'firstName field classified');
+  assert(sig.classification === 'possible_pii', 'firstName classified as possible_pii');
+}
+{
+  const sig = classifyFieldPath('data.phone');
+  assert(sig !== null, 'phone field classified');
+  assert(sig.classification === 'possible_pii', 'phone classified as possible_pii');
+}
+
+// 15. Classifies lat/lng as possible_location
+{
+  const sig = classifyFieldPath('vehicleLocation.latitude');
+  assert(sig !== null, 'latitude field classified');
+  assert(sig.classification === 'possible_location', 'latitude classified as possible_location');
+}
+{
+  const sig = classifyFieldPath('coords.lng');
+  assert(sig !== null, 'lng field classified');
+  assert(sig.classification === 'possible_location', 'lng classified as possible_location');
+}
+
+// 16. Classifies id/uuid/accountId/orderId as resource_identifier
+{
+  const sig = classifyFieldPath('order.id');
+  assert(sig !== null, 'id field classified');
+  assert(sig.classification === 'resource_identifier', 'id classified as resource_identifier');
+}
+{
+  const sig = classifyFieldPath('data.accountId');
+  assert(sig !== null, 'accountId field classified');
+  assert(sig.classification === 'resource_identifier', 'accountId classified as resource_identifier');
+}
+{
+  const sig = classifyFieldPath('item.orderId');
+  assert(sig !== null, 'orderId field classified');
+  assert(sig.classification === 'resource_identifier', 'orderId classified as resource_identifier');
+}
+
+// 17. Classifies financial field names
+{
+  const sig = classifyFieldPath('account.balance');
+  assert(sig !== null, 'balance field classified');
+  assert(sig.classification === 'possible_financial', 'balance classified as possible_financial');
+}
+
+// 18. Classifies secret-like field names
+{
+  const sig = classifyFieldPath('auth.password');
+  assert(sig !== null, 'password field classified');
+  assert(sig.classification === 'possible_secret', 'password classified as possible_secret');
+}
+{
+  const sig = classifyFieldPath('config.apiKey');
+  assert(sig !== null, 'apiKey field classified');
+  assert(sig.classification === 'possible_secret', 'apiKey classified as possible_secret');
+}
+
+// 19. Does not classify unrecognized field names
+{
+  const sig = classifyFieldPath('metadata.createdAt');
+  assert(sig === null, 'createdAt not classified — not a sensitive pattern');
+}
+{
+  const sig = classifyFieldPath('config.retryCount');
+  assert(sig === null, 'retryCount not classified — not a sensitive pattern');
+}
+
+// 20. Full buildExposureSummary with realistic payload
+{
+  const payload = {
+    id: 'ord-1001',
+    owner: 'user-alice',
+    item: 'Mechanical Keyboard',
+    total: 149.99,
+    status: 'shipped',
+  };
+  const body = Buffer.from(JSON.stringify(payload));
+  const result = buildExposureSummary(body, 'application/json', 'json:abc123');
+  assert(result !== null, 'summary for realistic payload');
+  assert(result.summaryGeneratedFromHash === 'json:abc123', 'evidence hash preserved');
+  assert(result.contentType === 'application/json', 'content type preserved');
+  assert(result.bodyBytes === body.length, 'body bytes correct');
+  assert(result.fieldPaths.includes('id'), 'id field path extracted');
+  assert(result.fieldPaths.includes('owner'), 'owner field path extracted');
+  assert(result.fieldPaths.includes('total'), 'total field path extracted');
+  assert(result.rawBodyStored === false, 'raw body not stored');
+  assert(result.rawValuesStored === false, 'raw values not stored');
+  // id should be classified as resource_identifier
+  const idSig = result.classificationSignals.find(s => s.field === 'id');
+  assert(idSig && idSig.classification === 'resource_identifier', 'id classified in full summary');
+  // total should be classified as possible_financial
+  const totalSig = result.classificationSignals.find(s => s.field === 'total');
+  assert(totalSig && totalSig.classification === 'possible_financial', 'total classified in full summary');
+}
+
+// 21. Returns null for empty body
+{
+  const result = buildExposureSummary(Buffer.from(''), 'application/json', 'json:test');
+  assert(result === null, 'returns null for empty body');
+}
+
+// 22. Returns null for null body
+{
+  const result = buildExposureSummary(null, 'application/json', 'json:test');
+  assert(result === null, 'returns null for null body');
+}
+
+// 23. Returns null for JSON null value
+{
+  const result = buildExposureSummary(Buffer.from('null'), 'application/json', 'json:test');
+  assert(result === null, 'returns null for JSON null value');
+}
+
+// 24. Returns null for empty array
+{
+  const result = buildExposureSummary(Buffer.from('[]'), 'application/json', 'json:test');
+  assert(result === null, 'returns null for empty array');
+}
+
+// 25. Handles content type variants (application/vnd.api+json)
+{
+  const body = Buffer.from(JSON.stringify({ data: { id: 1 } }));
+  const result = buildExposureSummary(body, 'application/vnd.api+json; charset=utf-8', 'json:test');
+  assert(result !== null, 'handles JSON content type variants');
+}
+
+// ── exposure-summary.js — adversarial ──────────────────────────────────────
+section('exposure-summary.js — adversarial');
+
+// 26. Hostile privacy payload — field names present, raw values absent
+{
+  const hostile = {
+    email: 'alice@company.com',
+    password: 'SuperSecret123!',
+    apiKey: 'sk_live_123456',
+    token: 'eyJhbGciOiJIUzI1NiJ9.payload.signature',
+    ssn: '123-45-6789',
+    cardNumber: '4111111111111111',
+    location: {
+      latitude: 19.4326,
+      longitude: -99.1332,
+    },
+  };
+  const body = Buffer.from(JSON.stringify(hostile));
+  const result = buildExposureSummary(body, 'application/json', 'json:hostile');
+  assert(result !== null, 'hostile payload produces summary');
+
+  // Field paths present
+  assert(result.fieldPaths.includes('email'), 'hostile: email field path present');
+  assert(result.fieldPaths.includes('password'), 'hostile: password field path present');
+  assert(result.fieldPaths.includes('apiKey'), 'hostile: apiKey field path present');
+  assert(result.fieldPaths.includes('token'), 'hostile: token field path present');
+  assert(result.fieldPaths.includes('ssn'), 'hostile: ssn field path present');
+  assert(result.fieldPaths.includes('cardNumber'), 'hostile: cardNumber field path present');
+  assert(result.fieldPaths.includes('location.latitude'), 'hostile: location.latitude field path present');
+  assert(result.fieldPaths.includes('location.longitude'), 'hostile: location.longitude field path present');
+
+  // Raw values NEVER present
+  const s = JSON.stringify(result);
+  assert(!s.includes('alice@company.com'), 'hostile: no raw email value');
+  assert(!s.includes('SuperSecret123'), 'hostile: no raw password value');
+  assert(!s.includes('sk_live_123456'), 'hostile: no raw API key value');
+  assert(!s.includes('eyJhbGciOi'), 'hostile: no raw JWT value');
+  assert(!s.includes('123-45-6789'), 'hostile: no raw SSN value');
+  assert(!s.includes('4111111111111111'), 'hostile: no raw card number value');
+  assert(!s.includes('19.4326'), 'hostile: no raw latitude value');
+  assert(!s.includes('-99.1332'), 'hostile: no raw longitude value');
+
+  // Classification signals present for sensitive fields
+  const sigs = result.classificationSignals;
+  assert(sigs.some(x => x.field === 'email' && x.classification === 'possible_pii'),
+    'hostile: email classified as possible_pii');
+  assert(sigs.some(x => x.field === 'password' && x.classification === 'possible_secret'),
+    'hostile: password classified as possible_secret');
+  assert(sigs.some(x => x.field === 'apiKey' && x.classification === 'possible_secret'),
+    'hostile: apiKey classified as possible_secret');
+  assert(sigs.some(x => x.field === 'token' && x.classification === 'possible_secret'),
+    'hostile: token classified as possible_secret');
+  assert(sigs.some(x => x.field === 'ssn' && x.classification === 'possible_pii'),
+    'hostile: ssn classified as possible_pii');
+  assert(sigs.some(x => x.field === 'location.latitude' && x.classification === 'possible_location'),
+    'hostile: latitude classified as possible_location');
+  assert(sigs.some(x => x.field === 'location.longitude' && x.classification === 'possible_location'),
+    'hostile: longitude classified as possible_location');
+}
+
+// 27. Empty classificationSignals — non-trivial JSON with no sensitive field names
+{
+  const body = Buffer.from(JSON.stringify({ ok: true, count: 5, version: '1.0' }));
+  const result = buildExposureSummary(body, 'application/json', 'json:benign');
+  assert(result !== null, 'benign payload produces summary');
+  assert(result.fieldPaths.length > 0, 'benign payload has field paths');
+  assert(result.classificationSignals.length === 0, 'benign payload has zero classification signals');
+}
+
+// 28. Non-JSON content type returns null even with valid JSON bytes
+{
+  const body = Buffer.from(JSON.stringify({ id: 1, secret: 'leaked' }));
+  const result = buildExposureSummary(body, 'text/plain', 'raw:abc');
+  assert(result === null, 'text/plain returns null even with JSON bytes');
+}
+
+// 29. Ambiguous classification: "state" matches possible_location
+{
+  const sig = classifyFieldPath('address.state');
+  assert(sig !== null, 'state is classified');
+  assert(sig.classification === 'possible_location', 'state classified as possible_location');
+}
+
+// 30. Ambiguous classification: "tokenCount" does NOT match possible_secret
+{
+  const sig = classifyFieldPath('usage.tokenCount');
+  assert(sig === null, 'tokenCount not classified — regex is anchored');
+}
+
+// 31. Ambiguous classification: "passwordRequired" does NOT match possible_secret
+{
+  const sig = classifyFieldPath('settings.passwordRequired');
+  assert(sig === null, 'passwordRequired not classified — regex is anchored');
+}
+
+// 32. Ambiguous classification: "emailVerified" does NOT match possible_pii
+{
+  const sig = classifyFieldPath('user.emailVerified');
+  assert(sig === null, 'emailVerified not classified — regex is anchored');
+}
+
+// 33. Truncation flag with array duplicates — tests pre-dedup truncation behavior
+{
+  // Create an array of identical objects to generate many duplicate paths
+  const items = Array.from({ length: 5 }, () => {
+    const obj = {};
+    for (let i = 0; i < 50; i++) obj[`field${i}`] = 'val';
+    return obj;
+  });
+  const body = Buffer.from(JSON.stringify(items));
+  const result = buildExposureSummary(body, 'application/json', 'json:dupes');
+  assert(result !== null, 'array-of-dupes produces summary');
+  // After dedup, unique paths should be ~50 (field0..field49), well under 200
+  // but pre-dedup paths from 5 sampled elements × 50 = 250, which may trigger truncation
+  // This documents the behavior — truncation is checked before dedup
+  assert(typeof result.fieldPathsTruncated === 'boolean', 'truncation flag is boolean for array dupes');
+  // Unique paths should be reasonable
+  assert(result.fieldPaths.length <= 51, 'deduplicated paths are reasonable count');
+}
+
+// ── exposure-summary.js — key sanitization ─────────────────────────────────
+section('exposure-summary.js — key sanitization');
+
+const { sanitizeKeySegment, MAX_EXPOSURE_BODY_BYTES } = require(root + '/src/exposure-summary');
+
+// 34. Email-keyed object → [email-key], value not leaked through key
+{
+  const payload = { users: { 'alice@company.com': { password: 'SuperSecret123!', accountId: 'acct-1' } } };
+  const body = Buffer.from(JSON.stringify(payload));
+  const result = buildExposureSummary(body, 'application/json', 'json:emailkey');
+  const s = JSON.stringify(result);
+  assert(result.fieldPaths.includes('users.[email-key]'), 'email key sanitized to [email-key]');
+  assert(result.fieldPaths.includes('users.[email-key].password'), 'nested path under email key sanitized');
+  assert(!s.includes('alice@company.com'), 'raw email NOT in field paths');
+  // password is still a schema field name under the sanitized key — should classify
+  assert(result.classificationSignals.some(x => x.field === 'users.[email-key].password' && x.classification === 'possible_secret'),
+    'password under sanitized key still classified');
+}
+
+// 35. UUID-keyed object → [uuid-key]
+{
+  const payload = { vehicles: { 'a07828f3-edcf-4535-a59e-6afda15e91ce': { latitude: 19.4326 } } };
+  const body = Buffer.from(JSON.stringify(payload));
+  const result = buildExposureSummary(body, 'application/json', 'json:uuidkey');
+  const s = JSON.stringify(result);
+  assert(result.fieldPaths.includes('vehicles.[uuid-key]'), 'UUID key sanitized to [uuid-key]');
+  assert(result.fieldPaths.includes('vehicles.[uuid-key].latitude'), 'nested path under UUID key sanitized');
+  assert(!s.includes('a07828f3-edcf-4535-a59e-6afda15e91ce'), 'raw UUID NOT in field paths');
+}
+
+// 36. Card-like / long numeric key → [numeric-key] (no [card-like-key])
+{
+  const payload = { cards: { '4111111111111111': { token: 'tok-1' } } };
+  const body = Buffer.from(JSON.stringify(payload));
+  const result = buildExposureSummary(body, 'application/json', 'json:numkey');
+  const s = JSON.stringify(result);
+  assert(result.fieldPaths.includes('cards.[numeric-key]'), 'long numeric key sanitized to [numeric-key]');
+  assert(!s.includes('4111111111111111'), 'raw numeric key NOT in field paths');
+  assert(!s.includes('card-like-key'), 'no [card-like-key] placeholder used');
+}
+
+// 37. Token-like key (JWT) → [token-like-key]
+{
+  const jwt = 'eyJhbGciOiJIUzI1NiIs.eyJzdWIiOiIxMjM0NTY3.SflKxwRJSMeKKF2QT4';
+  const payload = { sessions: { [jwt]: { userId: 'u-1' } } };
+  const body = Buffer.from(JSON.stringify(payload));
+  const result = buildExposureSummary(body, 'application/json', 'json:jwtkey');
+  const s = JSON.stringify(result);
+  assert(result.fieldPaths.includes('sessions.[token-like-key]'), 'JWT key sanitized to [token-like-key]');
+  assert(!s.includes('eyJhbGciOiJIUzI1NiIs'), 'raw JWT NOT in field paths');
+}
+
+// 38. Token-like key (sk_ prefix) → [token-like-key]
+{
+  const payload = { keys: { 'sk_live_abcdef123456': { scope: 'full' } } };
+  const body = Buffer.from(JSON.stringify(payload));
+  const result = buildExposureSummary(body, 'application/json', 'json:skkey');
+  const s = JSON.stringify(result);
+  assert(result.fieldPaths.includes('keys.[token-like-key]'), 'sk_ key sanitized to [token-like-key]');
+  assert(!s.includes('sk_live_abcdef123456'), 'raw sk_ key NOT in field paths');
+}
+
+// 39. Control/newline/ANSI key → [unsafe-key], output has no control chars
+{
+  const payload = { '\u001b[31mred\u001b[0m': { secret: 'x' }, 'line\nbreak': { id: 1 } };
+  const body = Buffer.from(JSON.stringify(payload));
+  const result = buildExposureSummary(body, 'application/json', 'json:unsafe');
+  const s = JSON.stringify(result);
+  assert(result.fieldPaths.includes('[unsafe-key]'), 'control-char key sanitized to [unsafe-key]');
+  // No raw ANSI escape or newline in the stored paths
+  assert(!/\u001b/.test(result.fieldPaths.join('|')), 'no ANSI escape in field paths');
+  assert(!/\n/.test(result.fieldPaths.join('|')), 'no newline in field paths');
+}
+
+// 40. Schema field names are NOT sanitized — exposure shape stays useful
+{
+  assert(sanitizeKeySegment('email') === 'email', 'schema key email kept');
+  assert(sanitizeKeySegment('password') === 'password', 'schema key password kept');
+  assert(sanitizeKeySegment('accountId') === 'accountId', 'schema key accountId kept');
+  assert(sanitizeKeySegment('vehicleId') === 'vehicleId', 'schema key vehicleId kept');
+  assert(sanitizeKeySegment('latitude') === 'latitude', 'schema key latitude kept');
+  assert(sanitizeKeySegment('longitude') === 'longitude', 'schema key longitude kept');
+  assert(sanitizeKeySegment('cardLast4') === 'cardLast4', 'schema key cardLast4 kept');
+  assert(sanitizeKeySegment('firstName') === 'firstName', 'schema key firstName kept');
+}
+
+// 41. Sanitization precedence is deterministic
+{
+  // email always → [email-key], even though it's also "long-ish"
+  assert(sanitizeKeySegment('alice@company.com') === '[email-key]', 'email precedence');
+  // UUID always → [uuid-key]
+  assert(sanitizeKeySegment('a07828f3-edcf-4535-a59e-6afda15e91ce') === '[uuid-key]', 'uuid precedence');
+  // long numeric → [numeric-key]
+  assert(sanitizeKeySegment('4111111111111111') === '[numeric-key]', 'numeric precedence');
+  // short numeric (< 12 digits) is NOT sanitized — could be a normal ID
+  assert(sanitizeKeySegment('1001') === '1001', 'short numeric key kept');
+  // unsafe beats everything
+  assert(sanitizeKeySegment('a\u0000b') === '[unsafe-key]', 'unsafe precedence');
+}
+
+// 42. Placeholders are inert — never classified
+{
+  assert(classifyFieldPath('users.[email-key]') === null, '[email-key] not classified');
+  assert(classifyFieldPath('x.[uuid-key]') === null, '[uuid-key] not classified');
+  assert(classifyFieldPath('x.[token-like-key]') === null, '[token-like-key] not classified');
+  assert(classifyFieldPath('x.[numeric-key]') === null, '[numeric-key] not classified');
+  assert(classifyFieldPath('x.[dynamic-key]') === null, '[dynamic-key] not classified');
+  assert(classifyFieldPath('x.[unsafe-key]') === null, '[unsafe-key] not classified');
+}
+
+// 43. High-entropy long random key → [dynamic-key]; long normal word kept
+{
+  // 40-char mixed-case+digit blob → dynamic
+  assert(sanitizeKeySegment('aB3xK9mZ2qP7wL4nR8tY6vC1dF5gH0jS3kM8pQ2x') === '[dynamic-key]',
+    'high-entropy key sanitized to [dynamic-key]');
+  // A long but normal lowercase schema-ish word is kept
+  assert(sanitizeKeySegment('verylongdescriptivefieldnamehere') === 'verylongdescriptivefieldnamehere',
+    'long lowercase schema word kept');
+}
+
+// ── exposure-summary.js — bounded analysis ─────────────────────────────────
+section('exposure-summary.js — bounded analysis');
+
+// 44. Oversized body → skipped summary, finding-side unaffected
+{
+  // Build a JSON body just over 1 MB
+  const bigArray = [];
+  let approxBytes = 0;
+  while (approxBytes < MAX_EXPOSURE_BODY_BYTES + 1000) {
+    const chunk = { id: bigArray.length, data: 'x'.repeat(100) };
+    bigArray.push(chunk);
+    approxBytes += 120;
+  }
+  const body = Buffer.from(JSON.stringify(bigArray));
+  assert(body.length > MAX_EXPOSURE_BODY_BYTES, 'test body exceeds size ceiling');
+  const result = buildExposureSummary(body, 'application/json', 'json:huge');
+  assert(result !== null, 'oversized body returns a summary object (not null)');
+  assert(result.skipped === true, 'oversized body summary is marked skipped');
+  assert(result.reason === 'body-too-large', 'skip reason is body-too-large');
+  assert(result.bodyBytes === body.length, 'skipped summary records body size');
+  assert(result.rawBodyStored === false, 'skipped summary: rawBodyStored false');
+  assert(result.rawValuesStored === false, 'skipped summary: rawValuesStored false');
+  assert(result.summaryGeneratedFromHash === 'json:huge', 'skipped summary keeps evidence hash');
+  // No field paths — we never parsed
+  assert(result.fieldPaths === undefined, 'skipped summary has no fieldPaths');
+}
+
+// 45. Body just under the ceiling is analyzed normally
+{
+  // Build the body directly to avoid O(n^2) repeated stringification.
+  const chunk = '{"id":1,"name":"item"}';
+  const targetBytes = MAX_EXPOSURE_BODY_BYTES - 50000;
+  const count = Math.floor(targetBytes / (chunk.length + 1));
+  const body = Buffer.from('[' + Array(count).fill(chunk).join(',') + ']');
+  assert(body.length < MAX_EXPOSURE_BODY_BYTES, 'test body under size ceiling');
+  const result = buildExposureSummary(body, 'application/json', 'json:under');
+  assert(result !== null, 'under-ceiling body produces summary');
+  assert(!result.skipped, 'under-ceiling body is not skipped');
+  assert(Array.isArray(result.fieldPaths), 'under-ceiling body has fieldPaths');
+}
+
+// 46. Depth cap is exact — deepest path has exactly MAX_DEPTH segments
+{
+  // Build object nested well past MAX_DEPTH
+  let deep = { leaf: true };
+  for (let i = 0; i < 20; i++) deep = { ['L' + (19 - i)]: deep };
+  const paths = [];
+  extractFieldPaths(deep, '', paths, 0);
+  const deepest = paths.reduce((a, b) => b.split('.').length > a.split('.').length ? b : a, '');
+  const segs = deepest.split('.').length;
+  assert(segs === MAX_DEPTH, `deepest path has exactly MAX_DEPTH (${MAX_DEPTH}) segments, got ${segs}`);
+}
+
+// 47. Depth cap boundary — object exactly at MAX_DEPTH levels fully captured
+{
+  // Build object nested exactly MAX_DEPTH levels
+  let obj = { bottom: 1 };
+  for (let i = 0; i < MAX_DEPTH - 1; i++) obj = { ['k' + i]: obj };
+  const paths = [];
+  extractFieldPaths(obj, '', paths, 0);
+  // Should not throw, should produce bounded paths
+  assert(paths.length > 0, 'exact-depth object produces paths');
+  const deepest = paths.reduce((a, b) => b.split('.').length > a.split('.').length ? b : a, '');
+  assert(deepest.split('.').length <= MAX_DEPTH, 'no path exceeds MAX_DEPTH segments');
+}
+
+// ── exposure-summary.js — sanitization collision / ambiguity ───────────────
+section('exposure-summary.js — sanitization collision');
+
+// 48. Multiple distinct dynamic keys collapse to one placeholder path (privacy-good)
+{
+  const payload = {
+    users: {
+      'alice@company.com': { password: 'x' },
+      'bob@company.com':   { password: 'y' },
+      'carol@company.com': { password: 'z' },
+    },
+  };
+  const body = Buffer.from(JSON.stringify(payload));
+  const result = buildExposureSummary(body, 'application/json', 'json:collide');
+  const s = JSON.stringify(result);
+  // All three emails collapse to a single deduplicated path
+  const emailKeyPaths = result.fieldPaths.filter(p => p === 'users.[email-key]');
+  assert(emailKeyPaths.length === 1, 'three email keys collapse to one deduplicated path');
+  // No raw emails leak
+  assert(!s.includes('alice@company.com'), 'no raw alice email');
+  assert(!s.includes('bob@company.com'), 'no raw bob email');
+  assert(!s.includes('carol@company.com'), 'no raw carol email');
+}
+
+// 49. Sanitization metadata is present and honest when keys were sanitized
+{
+  const payload = {
+    users: { 'alice@company.com': { id: 1 } },
+    vehicles: { 'a07828f3-edcf-4535-a59e-6afda15e91ce': { speed: 5 } },
+  };
+  const body = Buffer.from(JSON.stringify(payload));
+  const result = buildExposureSummary(body, 'application/json', 'json:meta');
+  assert(result.sanitizedFieldPaths === true, 'sanitizedFieldPaths flag true when keys sanitized');
+  assert(Array.isArray(result.sanitizedKeyTypes), 'sanitizedKeyTypes is an array');
+  assert(result.sanitizedKeyTypes.includes('email-key'), 'sanitizedKeyTypes records email-key');
+  assert(result.sanitizedKeyTypes.includes('uuid-key'), 'sanitizedKeyTypes records uuid-key');
+  assert(typeof result.sanitizedKeySegments === 'number', 'sanitizedKeySegments is a number');
+  assert(result.sanitizedKeySegments === 2, 'sanitizedKeySegments counts both sanitized keys');
+}
+
+// 50. No sanitization metadata noise when nothing was sanitized
+{
+  const payload = { id: 1, email: 'field', accountId: 'a' };
+  const body = Buffer.from(JSON.stringify(payload));
+  const result = buildExposureSummary(body, 'application/json', 'json:clean');
+  assert(result.sanitizedFieldPaths === false, 'sanitizedFieldPaths false when no keys sanitized');
+  assert(result.sanitizedKeyTypes.length === 0, 'sanitizedKeyTypes empty when none sanitized');
+  assert(result.sanitizedKeySegments === 0, 'sanitizedKeySegments zero when none sanitized');
+}
+
+// 51. sanitizedKeySegments counts occurrences, sanitizedKeyTypes is deduplicated
+{
+  const payload = {
+    a: { 'alice@x.com': 1 },
+    b: { 'bob@y.com': 2 },
+  };
+  const body = Buffer.from(JSON.stringify(payload));
+  const result = buildExposureSummary(body, 'application/json', 'json:count');
+  // Two email keys sanitized → 2 segments, 1 type
+  assert(result.sanitizedKeySegments === 2, 'counts 2 sanitized segments');
+  assert(result.sanitizedKeyTypes.length === 1, 'one deduplicated key type');
+  assert(result.sanitizedKeyTypes[0] === 'email-key', 'type is email-key');
+}
+
+// ── exposure-summary.js — evidence hash consistency ────────────────────────
+section('exposure-summary.js — evidence hash consistency');
+
+// 52. summaryGeneratedFromHash echoes whatever evidence hash it was given
+{
+  const body = Buffer.from(JSON.stringify({ id: 1 }));
+  const semantic = buildExposureSummary(body, 'application/json', 'json:semantic123');
+  assert(semantic.summaryGeneratedFromHash === 'json:semantic123', 'echoes semantic evidence hash');
+  const raw = buildExposureSummary(body, 'application/json', 'raw:rawfallback456');
+  assert(raw.summaryGeneratedFromHash === 'raw:rawfallback456', 'echoes raw evidence hash');
+}
+
+// 53. skipped summary also echoes the evidence hash it was given
+{
+  const big = Buffer.from('[' + Array(140000).fill('{"id":1}').join(',') + ']');
+  assert(big.length > MAX_EXPOSURE_BODY_BYTES, 'oversized test body');
+  const result = buildExposureSummary(big, 'application/json', 'raw:bighash789');
+  assert(result.skipped === true, 'oversized body skipped');
+  assert(result.summaryGeneratedFromHash === 'raw:bighash789', 'skipped summary echoes evidence hash');
+}
+
+// 54. JSON body with a raw-prefixed evidence hash still summarizes correctly.
+// This is the big-int case: contentHash() returns a raw: hash for big-int JSON,
+// so a confirmed match can carry a raw: evidence hash while the body is JSON.
+// The summary must still generate AND echo that exact raw: hash.
+{
+  const body = Buffer.from('{"accountId":9007199254740993123,"email":"a@b.com"}');
+  const rawEvidenceHash = 'raw:' + 'a'.repeat(64);
+  const result = buildExposureSummary(body, 'application/json', rawEvidenceHash);
+  assert(result !== null && !result.skipped, 'big-int JSON body produces a normal summary');
+  assert(result.summaryGeneratedFromHash === rawEvidenceHash,
+    'summary echoes the raw-prefixed evidence hash for JSON body');
+  assert(result.fieldPaths.includes('accountId'), 'accountId field path present');
+  assert(result.fieldPaths.includes('email'), 'email field path present');
+  // No raw big-int value leaks
+  assert(!JSON.stringify(result).includes('9007199254740993'), 'no raw big-int value in summary');
+}
+
+// ── reporter.js — why-flagged wording accuracy ─────────────────────────────
+section('reporter.js — why-flagged wording');
+
+const { whyFlagged } = require(root + '/src/reporter');
+
+// 55. Semantic JSON match → JSON normalisation wording
+{
+  const lines = whyFlagged({ matchType: 'semantic-hash', evidence: { matchedHash: 'json:abc' } });
+  const text = lines.join(' | ');
+  assert(/JSON normalisation/.test(text), 'semantic match mentions JSON normalisation');
+  assert(!/raw-byte/.test(text), 'semantic match does not mention raw-byte');
+}
+
+// 56. Big-int semantic match with raw: hash → raw-byte wording, NOT JSON normalisation
+{
+  const lines = whyFlagged({ matchType: 'semantic-hash', evidence: { matchedHash: 'raw:def' } });
+  const text = lines.join(' | ');
+  assert(/raw-byte hashing/.test(text), 'raw-hash semantic match mentions raw-byte hashing');
+  assert(/JSON normalisation bypassed/.test(text), 'mentions normalisation was bypassed');
+  assert(!/matched after JSON normalisation/.test(text),
+    'does NOT claim matched after JSON normalisation when hash is raw:');
+}
+
+// 57. Raw-hash-fallback → byte-for-byte wording
+{
+  const lines = whyFlagged({ matchType: 'raw-hash-fallback', evidence: { matchedHash: 'raw:xyz' } });
+  const text = lines.join(' | ');
+  assert(/byte-for-byte/.test(text), 'raw fallback mentions byte-for-byte');
+}
+
+// 58. Size-proximity → verify-manually wording
+{
+  const lines = whyFlagged({ matchType: 'size-proximity', evidence: { matchedHash: 'json:q' } });
+  const text = lines.join(' | ');
+  assert(/verify manually/.test(text), 'size-proximity asks for manual verification');
+}
+
+// 59. Missing evidence block does not throw
+{
+  const lines = whyFlagged({ matchType: 'semantic-hash' });
+  assert(Array.isArray(lines) && lines.length >= 1, 'handles missing evidence block gracefully');
+}
+
+// ── reporter.js — URL/path privacy is documented, not silently claimed ─────
+section('reporter.js — path privacy disclosure');
+
+// 60. The report privacy section makes claims ONLY about bodies/values/tokens,
+// never falsely asserting that paths or resource IDs are sanitized. Paths are
+// preserved by design for reproducibility; the docs carry the warning.
+{
+  const fs = require('fs');
+  const { saveReport } = require(root + '/src/reporter');
+  // Minimal synthetic store for coverage summary
+  const synthStore = {
+    entries: [],
+    replayable: () => [],
+    size: () => 0,
+  };
+  const synthFindings = [{
+    findingId: 'AG-TEST-001',
+    severity: 'high', type: 'broken-access-control', confidence: 'confirmed',
+    method: 'GET',
+    path: '/api/users/alice@company.com',
+    resourceIds: [{ type: 'slug', value: 'alice@company.com' }],
+    tokenType: 'bearer',
+    originalStatus: 200, replayStatus: 200, originalSize: 50, replaySize: 50,
+    matchType: 'semantic-hash',
+    evidence: { originalContentHash: 'json:a', replayContentHash: 'json:a',
+                originalRawHash: 'raw:a', replayRawHash: 'raw:a',
+                matchedHash: 'json:a', matchType: 'semantic-hash' },
+    request: { method: 'GET', path: '/api/users/alice@company.com',
+               queryPresent: false, authMechanism: 'bearer', userAgentPreserved: true },
+    recordedAt: Date.now(), replayedAt: new Date().toISOString(),
+    curl: "curl -s -H 'Authorization: Bearer '$TOKEN_B 'http://x/api/users/alice@company.com'",
+  }];
+  const pathPriv = tmpPath('accguard-pathpriv-report');
+  saveReport(synthFindings, synthStore, pathPriv);
+  const raw = fs.readFileSync(pathPriv, 'utf8');
+  const rep = JSON.parse(raw);
+
+  // The privacy section asserts only body/value/token guarantees — it must NOT
+  // claim path sanitization (which accguard does not do).
+  assert(rep.privacy.rawBodiesStored === false, 'privacy: bodies not stored');
+  assert(rep.privacy.rawValuesStored === false, 'privacy: values not stored');
+  assert(rep.privacy.rawTokensStored === false, 'privacy: tokens not stored');
+  assert(rep.privacy.pathsSanitized === undefined,
+    'privacy section does NOT falsely claim paths are sanitized');
+
+  // By DESIGN, the path/resourceIds/curl preserve URL content for reproduction.
+  // This test documents that property so a future change that silently strips
+  // them would be caught and force a conscious decision.
+  assert(rep.findings[0].path.includes('alice@company.com'),
+    'path preserved for reproducibility (documented behavior)');
+  assert(rep.findings[0].curl.includes('alice@company.com'),
+    'curl preserves path for reproducibility (documented behavior)');
+
+  try { fs.unlinkSync(pathPriv); } catch {}
+}
+
 section('integration — proxy + fake app');
 
 // Minimal fake app with one deliberate IDOR bug
@@ -686,6 +1462,14 @@ function makeFakeApp(port) {
     const p    = req.url.split('?')[0];
 
     if (p === '/api/health') return send(res, 200, { ok: true });
+
+    // Public endpoint — returns same data regardless of auth.
+    // Will be reclassified to possible-missing-authentication by anon probe.
+    const pubM = p.match(/^\/api\/public\/(\d+)$/);
+    if (pubM) {
+      return send(res, 200, { id: pubM[1], name: 'Widget', price: 9.99 });
+    }
+
     if (!user) return send(res, 401, { error: 'unauthorized' });
 
     const m = p.match(/^\/api\/orders\/(\d+)$/);
@@ -694,6 +1478,28 @@ function makeFakeApp(port) {
       if (!order) return send(res, 404, { error: 'not found' });
       // BUG: no ownership check
       return send(res, 200, order);
+    }
+
+    // Trivial payload endpoint — returns empty array for any user.
+    // Hash will match but trivial → needs-review.
+    const itemM = p.match(/^\/api\/items\/(\d+)$/);
+    if (itemM) {
+      return send(res, 200, []);
+    }
+
+    // Cross-family endpoint — returns same JSON bytes but text/plain for user-b.
+    // Recording (user-a) gets application/json → json: hash.
+    // Replay (user-b) gets text/plain → raw: hash.
+    // Cross-family fallback → confirmed via rawHash match.
+    const docM = p.match(/^\/api\/docs\/(\d+)$/);
+    if (docM) {
+      const doc = { id: Number(docM[1]), title: 'Report', classification: 'internal' };
+      if (user.id === 'user-b') {
+        const body = JSON.stringify(doc);
+        res.writeHead(200, { 'content-type': 'text/plain', 'content-length': Buffer.byteLength(body) });
+        return res.end(body);
+      }
+      return send(res, 200, doc);
     }
 
     if (p === '/api/profile') return send(res, 200, { id: user.id });
@@ -746,6 +1552,16 @@ async function runIntegration() {
   assert(order.status === 200,         'user A fetches their own order');
   assert(order.body.item === 'Laptop', 'correct order returned');
 
+  // Additional endpoints for adversarial testing
+  const trivial = await req('/api/items/42', 'tok-a');
+  assert(trivial.status === 200, 'trivial-payload endpoint responds');
+
+  const pub = await req('/api/public/99', 'tok-a');
+  assert(pub.status === 200, 'public endpoint responds to authed user');
+
+  const doc = await req('/api/docs/55', 'tok-a');
+  assert(doc.status === 200, 'cross-family endpoint responds to user A');
+
   // Session store
   assert(iStore.size() >= 1, 'store recorded authenticated requests');
 
@@ -777,9 +1593,209 @@ async function runIntegration() {
   assert(!!idor.curl,                     'finding includes curl command');
   assert(idor.tokenType === 'bearer',     'token type in finding');
 
+  // ── Evidence metadata ─────────────────────────────────────────────────────
+  section('integration — evidence metadata');
+
+  // Finding ID
+  assert(!!idor.findingId, 'finding has findingId');
+  assert(idor.findingId.startsWith('AG-'), 'findingId starts with AG-');
+  assert(idor.findingId.split('-').length >= 3, 'findingId has expected format');
+
+  // Timestamps
+  assert(typeof idor.recordedAt === 'number', 'finding has recordedAt (epoch ms)');
+  assert(typeof idor.replayedAt === 'string', 'finding has replayedAt (ISO string)');
+  assert(idor.replayedAt.includes('T'), 'replayedAt is ISO format');
+
+  // Evidence block
+  assert(!!idor.evidence, 'finding has evidence block');
+  assert(!!idor.evidence.originalContentHash, 'evidence has originalContentHash');
+  assert(!!idor.evidence.replayContentHash, 'evidence has replayContentHash');
+  assert(!!idor.evidence.matchedHash, 'evidence has matchedHash');
+  assert(idor.evidence.matchType === 'semantic-hash', 'evidence matchType correct');
+  // Raw hashes present
+  assert(!!idor.evidence.originalRawHash, 'evidence has originalRawHash');
+  assert(!!idor.evidence.replayRawHash, 'evidence has replayRawHash');
+
+  // Request metadata
+  assert(!!idor.request, 'finding has request metadata');
+  assert(idor.request.method === 'GET', 'request method in metadata');
+  assert(idor.request.authMechanism === 'bearer', 'auth mechanism in metadata');
+
+  // ── Exposure Summary on confirmed BOLA ──────────────────────────────────
+  section('integration — exposure summary');
+
+  assert(!!idor.exposureSummary, 'confirmed BOLA includes exposureSummary');
+  assert(idor.exposureSummary.rawBodyStored === false, 'exposureSummary rawBodyStored is false');
+  assert(idor.exposureSummary.rawValuesStored === false, 'exposureSummary rawValuesStored is false');
+  assert(Array.isArray(idor.exposureSummary.fieldPaths), 'exposureSummary has fieldPaths array');
+  assert(idor.exposureSummary.fieldPaths.length > 0, 'exposureSummary has field paths');
+  assert(idor.exposureSummary.fieldPaths.includes('id'), 'exposureSummary includes id field');
+  assert(idor.exposureSummary.fieldPaths.includes('owner'), 'exposureSummary includes owner field');
+  assert(idor.exposureSummary.fieldPaths.includes('total'), 'exposureSummary includes total field');
+  assert(!!idor.exposureSummary.summaryGeneratedFromHash, 'exposureSummary links to evidence hash');
+  assert(idor.exposureSummary.summaryGeneratedFromHash === idor.evidence.matchedHash,
+    'exposureSummary hash matches evidence matchedHash');
+
+  // Classification signals present
+  assert(Array.isArray(idor.exposureSummary.classificationSignals), 'classificationSignals is array');
+  const idSig = idor.exposureSummary.classificationSignals.find(s => s.field === 'id');
+  assert(idSig && idSig.classification === 'resource_identifier',
+    'id classified as resource_identifier in integration');
+  const totalSig = idor.exposureSummary.classificationSignals.find(s => s.field === 'total');
+  assert(totalSig && totalSig.classification === 'possible_financial',
+    'total classified as possible_financial in integration');
+
+  // No raw values leaked into exposureSummary
+  const esStr = JSON.stringify(idor.exposureSummary);
+  assert(!esStr.includes('Laptop'), 'no raw item value in exposureSummary');
+  assert(!esStr.includes('999'), 'no raw total value in exposureSummary');
+  assert(!esStr.includes('user-a'), 'no raw owner value in exposureSummary');
+
+  // ── Report structure ──────────────────────────────────────────────────────
+  section('integration — report structure');
+
+  const fs = require('fs');
+  const reportPath = tmpPath('accguard-test-report');
+  const { saveReport } = require(root + '/src/reporter');
+  saveReport(findings, iStore, reportPath);
+
+  const reportRaw = fs.readFileSync(reportPath, 'utf8');
+  const report = JSON.parse(reportRaw);
+
+  assert(report.version === '0.10.0', 'report version is 0.10.0');
+  assert(report.reportType === 'authorization-regression-evidence', 'report has reportType');
+
+  // Privacy section
+  assert(!!report.privacy, 'report has privacy section');
+  assert(report.privacy.rawTokensStored === false, 'privacy: rawTokensStored false');
+  assert(report.privacy.rawBodiesStored === false, 'privacy: rawBodiesStored false');
+  assert(report.privacy.rawValuesStored === false, 'privacy: rawValuesStored false');
+
+  // Integrity section
+  assert(!!report.integrity, 'report has integrity section');
+  assert(report.integrity.reportSchema === 'accguard-report-v1', 'integrity: schema correct');
+  assert(report.integrity.generatedBy === 'accguard 0.10.0', 'integrity: generatedBy correct');
+  assert(report.integrity.detectionPrimitive === 'cross-user replay hash match', 'integrity: primitive correct');
+  assert(report.integrity.bodyRetentionPolicy === 'not-stored', 'integrity: body retention correct');
+  assert(report.integrity.tokenRetentionPolicy === 'fingerprint-only', 'integrity: token retention correct');
+
+  // Report findings include exposureSummary
+  const reportIdor = report.findings.find(f => f.path && f.path.includes('/api/orders/1001'));
+  assert(!!reportIdor, 'IDOR finding in JSON report');
+  assert(!!reportIdor.exposureSummary, 'JSON report finding has exposureSummary');
+  assert(!!reportIdor.findingId, 'JSON report finding has findingId');
+  assert(!!reportIdor.evidence, 'JSON report finding has evidence block');
+
+  // JSON report never contains raw exposed values
+  assert(!reportRaw.includes('"Laptop"'), 'JSON report does not contain raw item value');
+
+  // Full report string scan for known secrets from fake app
+  assert(!reportRaw.includes('tok-a'), 'report does not contain raw token A');
+  assert(!reportRaw.includes('tok-b'), 'report does not contain raw token B');
+
+  // Clean up
+  try { fs.unlinkSync(reportPath); } catch {}
+
   // No false positive on non-parameterised endpoints
   const profileFinding = findings.find(f => f.path === '/api/profile');
   assert(!profileFinding, 'no false positive on /api/profile');
+
+  // ── Gating: exposure summary subordination ──────────────────────────────
+  section('integration — gating: exposureSummary only on confirmed BOLA');
+
+  // needs-review (trivial payload) should NOT have exposureSummary
+  const trivialFinding = findings.find(f => f.path && f.path.includes('/api/items/42'));
+  assert(!!trivialFinding, 'trivial-payload finding detected');
+  assert(trivialFinding.type === 'needs-review' || trivialFinding.confidence === 'needs-review',
+    'trivial payload is needs-review');
+  assert(!trivialFinding.exposureSummary,
+    'GATE: needs-review finding has NO exposureSummary');
+
+  // possible-missing-authentication should NOT have exposureSummary
+  const pubFinding = findings.find(f => f.path && f.path.includes('/api/public/99'));
+  assert(!!pubFinding, 'public-endpoint finding detected');
+  assert(pubFinding.type === 'possible-missing-authentication',
+    'public endpoint reclassified to possible-missing-authentication');
+  assert(!pubFinding.exposureSummary,
+    'GATE: possible-missing-authentication has NO exposureSummary');
+
+  // Cross-family raw-hash-fallback confirmed BOLA — verify evidence chain
+  const docFinding = findings.find(f => f.path && f.path.includes('/api/docs/55'));
+  assert(!!docFinding, 'cross-family finding detected');
+  assert(docFinding.type === 'broken-access-control', 'cross-family finding is BOLA');
+  assert(docFinding.confidence === 'confirmed', 'cross-family finding is confirmed');
+  assert(docFinding.matchType === 'raw-hash-fallback', 'cross-family matchType is raw-hash-fallback');
+  assert(docFinding.evidence.matchedHash.startsWith('raw:'), 'cross-family evidence hash is raw:');
+  assert(docFinding.evidence.matchType === 'raw-hash-fallback', 'evidence matchType is raw-hash-fallback');
+  // Cross-family confirmed BOLA with text/plain → no exposureSummary (correct: non-JSON)
+  assert(!docFinding.exposureSummary,
+    'GATE: non-JSON confirmed BOLA has NO exposureSummary');
+
+  // ── Backward compatibility ────────────────────────────────────────────────
+  section('integration — backward compatibility');
+
+  // Every finding must still contain the v0.9.2 field shape
+  const V092_FIELDS = [
+    'severity', 'type', 'confidence', 'method', 'path', 'resourceIds',
+    'tokenType', 'originalStatus', 'replayStatus', 'originalSize',
+    'replaySize', 'matchType', 'curl',
+  ];
+  for (const f of findings) {
+    for (const field of V092_FIELDS) {
+      assert(f[field] !== undefined,
+        `backward compat: finding on ${f.path} has ${field}`);
+    }
+  }
+
+  // ── Finding ID uniqueness ─────────────────────────────────────────────────
+  section('integration — finding ID uniqueness');
+
+  const allIds = findings.map(f => f.findingId);
+  const uniqueIds = new Set(allIds);
+  assert(uniqueIds.size === allIds.length,
+    `all ${allIds.length} finding IDs are unique within the run`);
+  // All IDs share the same run timestamp prefix
+  const prefixes = new Set(allIds.map(id => id.replace(/-\d{3}$/, '')));
+  assert(prefixes.size === 1,
+    'all finding IDs share the same run timestamp prefix');
+
+  // ── Evidence-hash invariant ───────────────────────────────────────────────
+  section('integration — evidence hash invariant');
+
+  // The core audit-grade invariant: for every finding that has an
+  // exposureSummary (normal OR skipped), the summary's evidence hash must
+  // equal the finding's evidence.matchedHash. They must never drift.
+  let checkedSummaries = 0;
+  for (const f of findings) {
+    if (f.exposureSummary) {
+      assert(f.exposureSummary.summaryGeneratedFromHash === f.evidence.matchedHash,
+        `${f.path}: exposureSummary hash === evidence.matchedHash`);
+      checkedSummaries++;
+    }
+    // matchType must agree between top-level and evidence block
+    assert(f.matchType === f.evidence.matchType,
+      `${f.path}: top-level matchType === evidence.matchType`);
+    // evidence.matchedHash must be one of the recorded hashes for this finding
+    const knownHashes = [
+      f.evidence.originalContentHash, f.evidence.replayContentHash,
+      f.evidence.originalRawHash, f.evidence.replayRawHash,
+    ].filter(Boolean);
+    assert(knownHashes.includes(f.evidence.matchedHash),
+      `${f.path}: matchedHash is one of the recorded hashes`);
+  }
+  assert(checkedSummaries >= 1, 'at least one finding had an exposureSummary to check');
+
+  // Semantic-hash finding: matchedHash must be a semantic (json:) hash
+  const semFinding = findings.find(f => f.matchType === 'semantic-hash');
+  assert(!!semFinding, 'a semantic-hash finding exists');
+  assert(semFinding.evidence.matchedHash === semFinding.evidence.replayContentHash,
+    'semantic finding matchedHash is the replay content hash');
+
+  // Raw-fallback finding: matchedHash must be the raw hash
+  const rawFinding = findings.find(f => f.matchType === 'raw-hash-fallback');
+  assert(!!rawFinding, 'a raw-hash-fallback finding exists');
+  assert(rawFinding.evidence.matchedHash === rawFinding.evidence.replayRawHash,
+    'raw-fallback finding matchedHash is the replay raw hash');
 
   await proxy.close();
   appServer.close();

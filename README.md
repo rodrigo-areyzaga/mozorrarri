@@ -262,9 +262,9 @@ The `if: always()` is important — without it, the artifact is skipped when acc
   Findings             : 1
 ────────────────────────────────────────────────────────────────
 
-  [1] HIGH
-      Authorization regression  — broken access control (OWASP A01)
-      Mechanism                 — ✓ confirmed unauthorized data replay
+  [1] HIGH — broken access control (OWASP A01)
+      Finding ID   — AG-20260610T183012Z-001
+      Mechanism    — ✓ confirmed unauthorized data replay
       GET /api/orders/ord-1001
       Resource IDs : 1001, ord-1001
       Auth type    : bearer
@@ -276,11 +276,89 @@ The `if: always()` is important — without it, the artifact is skipped when acc
         · Response hashes matched after JSON normalisation
         · SHA256(normalised JSON) identical for both principals
 
+      Exposure Summary:
+        Fields exposed : id, owner, item, total, status
+        Signals        : resource_identifier, possible_financial
+          id → resource_identifier
+          total → possible_financial
+        Raw body stored: no
+        Raw values     : no
+        Evidence hash  : json:2c913a03...
+
       Reproduce:
       curl -s -H 'Authorization: Bearer '$TOKEN_B 'http://localhost:3000/api/orders/ord-1001'
 
 1 authorization regression detected.
 Each finding is deterministic — hashes either match or they don't.
+```
+
+---
+
+## Exposure Summary
+
+For confirmed broken-access-control findings, accguard summarises which response field paths were exposed to the replay user.
+
+The Exposure Summary inspects response bodies while they are already in memory during replay. It does not persist response bodies.
+
+**accguard stores:**
+- Sanitized field paths (e.g. `owner`, `email`, `balance`)
+- Content type and body size
+- Evidence hash (the SHA-256 hash that proved the match)
+- Conservative classification signals (field-name-based)
+
+**accguard does not store:**
+- Raw response bodies
+- Raw field values
+- Raw tokens
+- Sensitive or dynamic JSON object keys — emails, UUIDs, tokens, long numeric IDs, and high-entropy strings used as keys are replaced with inert placeholders (`[email-key]`, `[uuid-key]`, `[token-like-key]`, `[numeric-key]`, `[dynamic-key]`, `[unsafe-key]`) before being stored as field-path segments
+
+Schema field names (`email`, `vehicleId`, `latitude`, `accountId`) are kept unchanged and classified normally — only key segments that look like concrete runtime data are sanitized, so the exposure shape stays useful.
+
+Responses larger than 1 MB skip exposure analysis (the body is already in memory from replay, but parsing and walking a very large body is an avoidable second cost). When skipped, the confirmed finding is still reported with an exposure summary marked `skipped: true, reason: "body-too-large"`.
+
+Classification signals are field-name-based only. A signal like `email → possible_pii` means "the field name matches a known PII pattern." It does not mean "a specific email address was leaked." The distinction between fact and signal is load-bearing.
+
+**Signal categories:**
+
+| Category | Matches |
+|---|---|
+| `possible_pii` | email, username, firstName, lastName, phone, ssn, dob |
+| `possible_location` | lat, latitude, lng, longitude, address, city, zip |
+| `resource_identifier` | id, uuid, userId, accountId, orderId |
+| `possible_financial` | balance, card, payment, iban, amount, total |
+| `possible_secret` | password, secret, apiKey, token, privateKey |
+
+Exposure Summary is enabled by default for confirmed findings. It runs only on JSON responses and only after the hash comparison has already confirmed the authorization failure. It does not affect detection or pass/fail behavior.
+
+**Sample JSON report finding with Exposure Summary:**
+
+```json
+{
+  "findingId": "AG-20260610T183012Z-001",
+  "severity": "high",
+  "type": "broken-access-control",
+  "confidence": "confirmed",
+  "method": "GET",
+  "path": "/api/orders/ord-1001",
+  "evidence": {
+    "originalContentHash": "json:2c913a03...",
+    "replayContentHash": "json:2c913a03...",
+    "matchedHash": "json:2c913a03...",
+    "matchType": "semantic-hash"
+  },
+  "exposureSummary": {
+    "summaryGeneratedFromHash": "json:2c913a03...",
+    "contentType": "application/json",
+    "bodyBytes": 122,
+    "fieldPaths": ["id", "owner", "item", "total", "status"],
+    "classificationSignals": [
+      { "field": "id", "signal": "identifier-like field name", "classification": "resource_identifier", "confidence": "high" },
+      { "field": "total", "signal": "financial-like field name", "classification": "possible_financial", "confidence": "high" }
+    ],
+    "rawBodyStored": false,
+    "rawValuesStored": false
+  }
+}
 ```
 
 ---
@@ -315,7 +393,7 @@ These are constraints, not missing features. They communicate what the tool is.
 - No cloud telemetry — nothing leaves your machine
 - No outbound network calls beyond your declared target
 - No persistent background daemon — runs for one session and exits
-- No storage of request bodies, response bodies, or raw tokens
+- No storage of request bodies, response bodies, or raw tokens — Exposure Summary extracts field paths in memory and discards the body
 
 ---
 
@@ -366,12 +444,14 @@ If fewer than `minObserved` requests are recorded, accguard exits with code `2` 
 ```
 Your tests
     ↓  HTTP_PROXY=127.0.0.1:8877
-proxy.js          →  forwards application requests · hashes each response
-session-store.js  →  records path · token type · resource IDs · content hash
+proxy.js              →  forwards application requests · hashes each response
+session-store.js      →  records path · token type · resource IDs · content hash
 tests finish
     ↓
-replay.js         →  replays as user B · SHA256 hash comparison
-reporter.js       →  deterministic findings · coverage summary · curl commands
+replay.js             →  replays as user B · SHA256 hash comparison
+exposure-summary.js   →  confirmed BOLA only · field paths · classification signals
+                         raw body: in memory only → discarded after inspection
+reporter.js           →  audit-ready evidence · privacy/integrity metadata · curl commands
     ↓
 exit 0 (clean) or exit 1 (authorization regression detected)
 ```

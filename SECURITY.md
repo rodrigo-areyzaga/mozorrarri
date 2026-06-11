@@ -29,6 +29,12 @@ These are intentional scope boundaries, not implementation gaps. See the README 
 
 **No data storage.** accguard records request metadata and response hashes. It does not store response bodies, request bodies, or raw token values. Token fingerprints use one-way SHA-256.
 
+**Exposure Summary — sanitized derived metadata only.** For confirmed broken-access-control findings, accguard inspects the replay response body while it is already in memory during replay and extracts sanitized field paths, content type, body size, classification signals, and evidence hashes. It does not store raw response bodies, raw field values, or raw tokens. Dynamic or sensitive-looking JSON object keys (emails, UUIDs, tokens, long numeric IDs, high-entropy strings) are replaced with inert placeholders such as `[email-key]` or `[uuid-key]` so they are never persisted as field-path segments. Responses larger than 1 MB skip exposure analysis entirely — the finding is still reported. The raw body is discarded after inspection.
+
+**Reports are security artifacts.** Reports may contain sensitive metadata such as endpoint paths, resource IDs, field names, and reproduction commands. Treat accguard reports as security artifacts and handle them accordingly.
+
+**Sensitive data in URLs is preserved, not sanitized.** While Exposure Summary sanitizes dynamic JSON object keys, accguard deliberately does **not** sanitize the request path, query string, `resourceIds`, or the `curl` reproduction command. If an API places sensitive data in the URL — e.g. `GET /api/users/alice@company.com`, `GET /api/sessions/<jwt>`, or `GET /api/cards/4111111111111111` — that data is preserved verbatim in the report, because the path is essential for reproducing the finding. This is a conscious reproducibility/privacy tradeoff. The implication: a report's paths and reproduction commands can contain emails, tokens, or other identifiers that appear in URLs. Handle reports accordingly, and avoid sharing them in untrusted channels.
+
 **No outbound connections.** accguard only communicates with the configured target. It does not send telemetry, phone home, or make connections to any external service.
 
 **Consent gate.** First-run interactive consent is required in local environments. CI environments skip the prompt and log an explicit acknowledgment.
@@ -41,7 +47,7 @@ These are intentional scope boundaries, not implementation gaps. See the README 
 
 ## Adversarial assessment
 
-accguard v0.9.2 underwent twelve rounds of independent adversarial testing across 85+ attack vectors and 13 harnesses. Zero open findings at release.
+accguard v0.9.2 underwent twelve rounds of independent adversarial testing across 85+ attack vectors and 13 harnesses. Zero open findings at release. v0.10.0 added Exposure Summary verification with 536 built-in tests passing.
 
 Areas tested: detection quality, hash soundness, capture pipeline, scope parsing, token handling, operational trust, proxy security, shell safety, fix interactions, and temporal contract.
 
