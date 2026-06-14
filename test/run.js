@@ -283,6 +283,25 @@ assert(ids5.some(i => i.value === 'user-alice'), 'extracts string slug ID');
 // ── extractResourceIds — candidate-filter tightening ────────────────────────
 section('extractResourceIds — candidate filter');
 
+// MongoDB ObjectID — 24-character hex string
+const objId = '507f1f77bcf86cd799439011';
+const idsObjectId = extractResourceIds('/api/users/' + objId);
+assert(idsObjectId.length === 1,                     'MongoDB ObjectID extracted');
+assert(idsObjectId[0].type === 'objectid',            'ObjectID type is objectid');
+assert(idsObjectId[0].value === objId,                'ObjectID value correct');
+
+const idsObjectIdDeep = extractResourceIds('/api/v2/vehicle/' + objId + '/location');
+assert(idsObjectIdDeep.some(r => r.value === objId),  'ObjectID in crAPI-style path extracted');
+
+// UUID still works alongside ObjectID
+const idsUUID = extractResourceIds('/api/users/550e8400-e29b-41d4-a716-446655440000');
+assert(idsUUID.length === 1 && idsUUID[0].type === 'uuid', 'UUID still extracted correctly alongside ObjectID');
+
+// 24 all-digit string has no letters — doesn't match ObjectID (needs at least one a-f)
+// and is too long for the integer pattern (1-20 digits). Not extracted — correct.
+const idsLongInt = extractResourceIds('/api/orders/123456789012345678901234');
+assert(idsLongInt.length === 0, '24-digit all-numeric string is not extracted (too long for integer, no letters for objectid)');
+
 // Version segments must NOT be treated as resource IDs
 const idsV2 = extractResourceIds('/api/v2/status');
 assert(idsV2.length === 0, 'v2 version segment is not a resource ID');
@@ -1822,7 +1841,7 @@ async function runIntegration() {
   const reportRaw = fs.readFileSync(reportPath, 'utf8');
   const report = JSON.parse(reportRaw);
 
-  assert(report.version === '0.10.0', 'report version is 0.10.0');
+  assert(report.version === '0.10.1', 'report version is 0.10.1');
   assert(report.reportType === 'authorization-regression-evidence', 'report has reportType');
 
   // Privacy section
@@ -1834,7 +1853,7 @@ async function runIntegration() {
   // Integrity section
   assert(!!report.integrity, 'report has integrity section');
   assert(report.integrity.reportSchema === 'accguard-report-v1', 'integrity: schema correct');
-  assert(report.integrity.generatedBy === 'accguard 0.10.0', 'integrity: generatedBy correct');
+  assert(report.integrity.generatedBy === 'accguard 0.10.1', 'integrity: generatedBy correct');
   assert(report.integrity.detectionPrimitive === 'cross-user replay hash match', 'integrity: primitive correct');
   assert(report.integrity.bodyRetentionPolicy === 'not-stored', 'integrity: body retention correct');
   assert(report.integrity.tokenRetentionPolicy === 'fingerprint-only', 'integrity: token retention correct');
@@ -1996,6 +2015,215 @@ async function runIntegration() {
   assert(!!rawFinding, 'a raw-hash-fallback finding exists');
   assert(rawFinding.evidence.matchedHash === rawFinding.evidence.replayRawHash,
     'raw-fallback finding matchedHash is the replay raw hash');
+
+  // ── CLI wrapper mode ─────────────────────────────────────────────────────
+  section('cli.js — run wrapper');
+
+  const { spawn } = require('child_process');
+  const fs2 = require('fs');
+
+  const wrapperTarget = http.createServer((req, res) => {
+    if (!req.headers.authorization) {
+      res.writeHead(401, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ error: 'unauthorized' }));
+      return;
+    }
+
+    if (req.url === '/api/orders/777') {
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ id: 777, owner: 'alice', total: 123 }));
+      return;
+    }
+
+    res.writeHead(404, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ error: 'not found' }));
+  });
+
+  await new Promise(resolve => wrapperTarget.listen(0, '127.0.0.1', resolve));
+  const wrapperTargetPort = wrapperTarget.address().port;
+
+  const probeServer = http.createServer();
+  await new Promise(resolve => probeServer.listen(0, '127.0.0.1', resolve));
+  const wrapperProxyPort = probeServer.address().port;
+  await new Promise(resolve => probeServer.close(resolve));
+
+  const wrapperDir = fs2.mkdtempSync(path.join(os.tmpdir(), `accguard-wrapper-${process.pid}-`));
+  const wrapperConfig = path.join(wrapperDir, 'accguard.config.json');
+  const wrapperReport = path.join(wrapperDir, 'accguard-report.json');
+  fs2.writeFileSync(wrapperConfig, JSON.stringify({
+    target:      `http://127.0.0.1:${wrapperTargetPort}`,
+    port:        wrapperProxyPort,
+    scope:       ['/api/'],
+    outputFile:  wrapperReport,
+    minObserved: 1,
+  }), 'utf8');
+
+  const wrappedClient = `
+    const http = require('http');
+    const proxy = new URL(process.env.ACCGUARD_PROXY_URL);
+    if (process.env.ACCGUARD_TOKEN_B) {
+      console.error('ACCGUARD_TOKEN_B leaked to wrapped command');
+      process.exit(8);
+    }
+    const target = process.env.ACCGUARD_TEST_TARGET;
+    const req = http.request({
+      hostname: proxy.hostname,
+      port: proxy.port,
+      method: 'GET',
+      path: target + '/api/orders/777',
+      headers: { authorization: 'Bearer alice-token' },
+    }, res => {
+      res.resume();
+      res.on('end', () => process.exit(res.statusCode === 200 ? 0 : 3));
+    });
+    req.on('error', err => { console.error(err.message); process.exit(2); });
+    req.end();
+  `;
+
+  const wrapperRun = await new Promise(resolve => {
+    const child = spawn(process.execPath, [
+      path.join(root, 'src/cli.js'),
+      'run', '--', process.execPath, '-e', wrappedClient, 'SECRET-SHOULD-NOT-APPEAR',
+    ], {
+      cwd: wrapperDir,
+      env: {
+        ...process.env,
+        CI:                   'true',
+        HOME:                 wrapperDir,
+        ACCGUARD_CONFIG:      wrapperConfig,
+        ACCGUARD_TOKEN_B:     'bob-token',
+        ACCGUARD_TEST_TARGET: `http://127.0.0.1:${wrapperTargetPort}`,
+      },
+    });
+
+    let stdout = '';
+    let stderr = '';
+    child.stdout.on('data', d => { stdout += d.toString(); });
+    child.stderr.on('data', d => { stderr += d.toString(); });
+
+    const timeout = setTimeout(() => {
+      child.kill('SIGTERM');
+      resolve({ status: 124, stdout, stderr: stderr + '\nwrapper smoke timed out' });
+    }, 10000);
+
+    child.on('close', code => {
+      clearTimeout(timeout);
+      resolve({ status: code, stdout, stderr });
+    });
+  });
+
+  assert(wrapperRun.status === 1, 'run wrapper exits 1 when replay finds exposure');
+  assert((wrapperRun.stdout + wrapperRun.stderr).includes('Running wrapped command'),
+    'run wrapper executes the supplied command path');
+  assert(!(wrapperRun.stdout + wrapperRun.stderr).includes('SECRET-SHOULD-NOT-APPEAR'),
+    'run wrapper does not echo wrapped command arguments that may contain secrets');
+  assert(!(wrapperRun.stdout + wrapperRun.stderr).includes('ACCGUARD_TOKEN_B leaked'),
+    'run wrapper does not expose replay token to wrapped command');
+  assert(fs2.existsSync(wrapperReport), 'run wrapper writes the same JSON report file');
+
+  const wrapperReportJson = JSON.parse(fs2.readFileSync(wrapperReport, 'utf8'));
+  assert(wrapperReportJson.findings.some(f => f.path === '/api/orders/777'),
+    'run wrapper report contains replay finding from wrapped test traffic');
+
+  // A wrapped command knows ACCGUARD_PROXY_URL. In run mode, child process exit
+  // is the completion signal; /--flush must not let test code finalize early.
+  const flushProbe = http.createServer();
+  await new Promise(resolve => flushProbe.listen(0, '127.0.0.1', resolve));
+  const flushProxyPort = flushProbe.address().port;
+  await new Promise(resolve => flushProbe.close(resolve));
+
+  const flushDir = fs2.mkdtempSync(path.join(os.tmpdir(), `accguard-wrapper-flush-${process.pid}-`));
+  const flushConfig = path.join(flushDir, 'accguard.config.json');
+  const flushReport = path.join(flushDir, 'accguard-report.json');
+  fs2.writeFileSync(flushConfig, JSON.stringify({
+    target:      `http://127.0.0.1:${wrapperTargetPort}`,
+    port:        flushProxyPort,
+    scope:       ['/api/'],
+    outputFile:  flushReport,
+    minObserved: 0,
+  }), 'utf8');
+
+  const flushThenRequestClient = `
+    const http = require('http');
+    const proxy = new URL(process.env.ACCGUARD_PROXY_URL);
+    const target = process.env.ACCGUARD_TEST_TARGET;
+
+    function postFlush(next) {
+      const req = http.request({
+        hostname: proxy.hostname,
+        port: proxy.port,
+        method: 'POST',
+        path: '/--flush',
+      }, res => {
+        res.resume();
+        res.on('end', next);
+      });
+      req.on('error', err => { console.error(err.message); process.exit(2); });
+      req.end();
+    }
+
+    function hitProtectedResource() {
+      const req = http.request({
+        hostname: proxy.hostname,
+        port: proxy.port,
+        method: 'GET',
+        path: target + '/api/orders/777',
+        headers: { authorization: 'Bearer alice-token' },
+      }, res => {
+        res.resume();
+        res.on('end', () => process.exit(res.statusCode === 200 ? 0 : 3));
+      });
+      req.on('error', err => { console.error(err.message); process.exit(4); });
+      req.end();
+    }
+
+    postFlush(() => setTimeout(hitProtectedResource, 50));
+  `;
+
+  const flushRun = await new Promise(resolve => {
+    const child = spawn(process.execPath, [
+      path.join(root, 'src/cli.js'),
+      'run', '--', process.execPath, '-e', flushThenRequestClient,
+    ], {
+      cwd: flushDir,
+      env: {
+        ...process.env,
+        CI:                   'true',
+        HOME:                 flushDir,
+        ACCGUARD_CONFIG:      flushConfig,
+        ACCGUARD_TOKEN_B:     'bob-token',
+        ACCGUARD_TEST_TARGET: `http://127.0.0.1:${wrapperTargetPort}`,
+      },
+    });
+
+    let stdout = '';
+    let stderr = '';
+    child.stdout.on('data', d => { stdout += d.toString(); });
+    child.stderr.on('data', d => { stderr += d.toString(); });
+
+    const timeout = setTimeout(() => {
+      child.kill('SIGTERM');
+      resolve({ status: 124, stdout, stderr: stderr + '\nflush abuse smoke timed out' });
+    }, 10000);
+
+    child.on('close', code => {
+      clearTimeout(timeout);
+      resolve({ status: code, stdout, stderr });
+    });
+  });
+
+  assert(flushRun.status === 1,
+    'run wrapper ignores child /--flush abuse and exits on replay finding');
+  assert(fs2.existsSync(flushReport),
+    'run wrapper writes report after child /--flush attempt');
+  const flushReportJson = JSON.parse(fs2.readFileSync(flushReport, 'utf8'));
+  assert(flushReportJson.findings.some(f => f.path === '/api/orders/777'),
+    'run wrapper still captures traffic after child /--flush attempt');
+
+  try { fs2.rmSync(flushDir, { recursive: true, force: true }); } catch {}
+
+  wrapperTarget.close();
+  try { fs2.rmSync(wrapperDir, { recursive: true, force: true }); } catch {}
 
   await proxy.close();
   appServer.close();

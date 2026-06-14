@@ -1,6 +1,6 @@
 # accguard Report Schema — v1
 
-accguard v0.10.0 produces JSON reports with the following structure.
+accguard v0.10.1 produces JSON reports with the following structure.
 
 ---
 

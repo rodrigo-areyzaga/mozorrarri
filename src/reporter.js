@@ -182,7 +182,7 @@ function printFindings(findings, store) {
 function saveReport(findings, store, outputPath) {
   const cov = coverageSummary(store);
   const report = {
-    version:     '0.10.0',
+    version:     '0.10.1',
     generatedAt: new Date().toISOString(),
     reportType:  'authorization-regression-evidence',
     privacy: {
@@ -192,7 +192,7 @@ function saveReport(findings, store, outputPath) {
     },
     integrity: {
       reportSchema:        'accguard-report-v1',
-      generatedBy:         'accguard 0.10.0',
+      generatedBy:         'accguard 0.10.1',
       detectionPrimitive:  'cross-user replay hash match',
       bodyRetentionPolicy: 'not-stored',
       tokenRetentionPolicy: 'fingerprint-only',

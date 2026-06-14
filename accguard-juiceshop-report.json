@@ -1,0 +1,352 @@
+{
+  "version": "0.10.1",
+  "generatedAt": "2026-06-14T03:39:49.059Z",
+  "reportType": "authorization-regression-evidence",
+  "privacy": {
+    "rawTokensStored": false,
+    "rawBodiesStored": false,
+    "rawValuesStored": false
+  },
+  "integrity": {
+    "reportSchema": "accguard-report-v1",
+    "generatedBy": "accguard 0.10.1",
+    "detectionPrimitive": "cross-user replay hash match",
+    "bodyRetentionPolicy": "not-stored",
+    "tokenRetentionPolicy": "fingerprint-only"
+  },
+  "summary": {
+    "observed": 8,
+    "replayCandidates": 3,
+    "resourcePatterns": 1,
+    "authMechanisms": "bearer",
+    "findings": 3,
+    "missingAuth": 0,
+    "needsReview": 0
+  },
+  "findings": [
+    {
+      "findingId": "AG-20260614T033948Z-001",
+      "severity": "high",
+      "type": "broken-access-control",
+      "confidence": "confirmed",
+      "method": "GET",
+      "path": "/rest/basket/1",
+      "resourceIds": [
+        {
+          "type": "integer",
+          "value": "1"
+        }
+      ],
+      "tokenType": "bearer",
+      "originalStatus": 200,
+      "replayStatus": 200,
+      "originalSize": 1310,
+      "replaySize": 1310,
+      "matchType": "semantic-hash",
+      "evidence": {
+        "originalContentHash": "json:77e51f8b4a4f1f86e905b7b058101266f5d9bb16f3d378493a4e682d0271f06a",
+        "replayContentHash": "json:77e51f8b4a4f1f86e905b7b058101266f5d9bb16f3d378493a4e682d0271f06a",
+        "originalRawHash": "raw:3a7c4b53ba2bfb9f9bf444ca0760308e5c3397776566c4ee3b0517a8edeb652e",
+        "replayRawHash": "raw:3a7c4b53ba2bfb9f9bf444ca0760308e5c3397776566c4ee3b0517a8edeb652e",
+        "matchedHash": "json:77e51f8b4a4f1f86e905b7b058101266f5d9bb16f3d378493a4e682d0271f06a",
+        "matchType": "semantic-hash"
+      },
+      "request": {
+        "method": "GET",
+        "path": "/rest/basket/1",
+        "queryPresent": false,
+        "authMechanism": "bearer",
+        "userAgentPreserved": false
+      },
+      "recordedAt": 1781408387788,
+      "replayedAt": "2026-06-14T03:39:48.794Z",
+      "curl": "curl -s -H 'Authorization: Bearer '$TOKEN_B 'http://localhost:3000/rest/basket/1'",
+      "exposureSummary": {
+        "summaryGeneratedFromHash": "json:77e51f8b4a4f1f86e905b7b058101266f5d9bb16f3d378493a4e682d0271f06a",
+        "contentType": "application/json; charset=utf-8",
+        "bodyBytes": 1310,
+        "fieldPaths": [
+          "status",
+          "data",
+          "data.id",
+          "data.coupon",
+          "data.UserId",
+          "data.createdAt",
+          "data.updatedAt",
+          "data.Products",
+          "data.Products[].id",
+          "data.Products[].name",
+          "data.Products[].description",
+          "data.Products[].price",
+          "data.Products[].deluxePrice",
+          "data.Products[].image",
+          "data.Products[].createdAt",
+          "data.Products[].updatedAt",
+          "data.Products[].deletedAt",
+          "data.Products[].BasketItem",
+          "data.Products[].BasketItem.ProductId",
+          "data.Products[].BasketItem.BasketId",
+          "data.Products[].BasketItem.id",
+          "data.Products[].BasketItem.quantity",
+          "data.Products[].BasketItem.createdAt",
+          "data.Products[].BasketItem.updatedAt"
+        ],
+        "fieldPathsTruncated": false,
+        "fieldPathLimit": 200,
+        "classificationSignals": [
+          {
+            "field": "data.id",
+            "signal": "identifier-like field name",
+            "classification": "resource_identifier",
+            "confidence": "high"
+          },
+          {
+            "field": "data.UserId",
+            "signal": "identifier-like field name",
+            "classification": "resource_identifier",
+            "confidence": "high"
+          },
+          {
+            "field": "data.Products[].id",
+            "signal": "identifier-like field name",
+            "classification": "resource_identifier",
+            "confidence": "high"
+          },
+          {
+            "field": "data.Products[].price",
+            "signal": "financial-like field name",
+            "classification": "possible_financial",
+            "confidence": "high"
+          },
+          {
+            "field": "data.Products[].BasketItem.id",
+            "signal": "identifier-like field name",
+            "classification": "resource_identifier",
+            "confidence": "high"
+          }
+        ],
+        "sanitizedFieldPaths": false,
+        "sanitizedKeyTypes": [],
+        "sanitizedKeySegments": 0,
+        "rawBodyStored": false,
+        "rawValuesStored": false
+      }
+    },
+    {
+      "findingId": "AG-20260614T033948Z-002",
+      "severity": "high",
+      "type": "broken-access-control",
+      "confidence": "confirmed",
+      "method": "GET",
+      "path": "/rest/basket/2",
+      "resourceIds": [
+        {
+          "type": "integer",
+          "value": "2"
+        }
+      ],
+      "tokenType": "bearer",
+      "originalStatus": 200,
+      "replayStatus": 200,
+      "originalSize": 557,
+      "replaySize": 557,
+      "matchType": "semantic-hash",
+      "evidence": {
+        "originalContentHash": "json:39a61581c551a1c9f61d6681193d2a41f217134e848d48d5b056994b2081e2a3",
+        "replayContentHash": "json:39a61581c551a1c9f61d6681193d2a41f217134e848d48d5b056994b2081e2a3",
+        "originalRawHash": "raw:699960d1073c6e4d01da727a735a1d9e90c63fe0720c21e75f25c276960faeb1",
+        "replayRawHash": "raw:699960d1073c6e4d01da727a735a1d9e90c63fe0720c21e75f25c276960faeb1",
+        "matchedHash": "json:39a61581c551a1c9f61d6681193d2a41f217134e848d48d5b056994b2081e2a3",
+        "matchType": "semantic-hash"
+      },
+      "request": {
+        "method": "GET",
+        "path": "/rest/basket/2",
+        "queryPresent": false,
+        "authMechanism": "bearer",
+        "userAgentPreserved": false
+      },
+      "recordedAt": 1781408388081,
+      "replayedAt": "2026-06-14T03:39:48.906Z",
+      "curl": "curl -s -H 'Authorization: Bearer '$TOKEN_B 'http://localhost:3000/rest/basket/2'",
+      "exposureSummary": {
+        "summaryGeneratedFromHash": "json:39a61581c551a1c9f61d6681193d2a41f217134e848d48d5b056994b2081e2a3",
+        "contentType": "application/json; charset=utf-8",
+        "bodyBytes": 557,
+        "fieldPaths": [
+          "status",
+          "data",
+          "data.id",
+          "data.coupon",
+          "data.UserId",
+          "data.createdAt",
+          "data.updatedAt",
+          "data.Products",
+          "data.Products[].id",
+          "data.Products[].name",
+          "data.Products[].description",
+          "data.Products[].price",
+          "data.Products[].deluxePrice",
+          "data.Products[].image",
+          "data.Products[].createdAt",
+          "data.Products[].updatedAt",
+          "data.Products[].deletedAt",
+          "data.Products[].BasketItem",
+          "data.Products[].BasketItem.ProductId",
+          "data.Products[].BasketItem.BasketId",
+          "data.Products[].BasketItem.id",
+          "data.Products[].BasketItem.quantity",
+          "data.Products[].BasketItem.createdAt",
+          "data.Products[].BasketItem.updatedAt"
+        ],
+        "fieldPathsTruncated": false,
+        "fieldPathLimit": 200,
+        "classificationSignals": [
+          {
+            "field": "data.id",
+            "signal": "identifier-like field name",
+            "classification": "resource_identifier",
+            "confidence": "high"
+          },
+          {
+            "field": "data.UserId",
+            "signal": "identifier-like field name",
+            "classification": "resource_identifier",
+            "confidence": "high"
+          },
+          {
+            "field": "data.Products[].id",
+            "signal": "identifier-like field name",
+            "classification": "resource_identifier",
+            "confidence": "high"
+          },
+          {
+            "field": "data.Products[].price",
+            "signal": "financial-like field name",
+            "classification": "possible_financial",
+            "confidence": "high"
+          },
+          {
+            "field": "data.Products[].BasketItem.id",
+            "signal": "identifier-like field name",
+            "classification": "resource_identifier",
+            "confidence": "high"
+          }
+        ],
+        "sanitizedFieldPaths": false,
+        "sanitizedKeyTypes": [],
+        "sanitizedKeySegments": 0,
+        "rawBodyStored": false,
+        "rawValuesStored": false
+      }
+    },
+    {
+      "findingId": "AG-20260614T033948Z-003",
+      "severity": "high",
+      "type": "broken-access-control",
+      "confidence": "confirmed",
+      "method": "GET",
+      "path": "/rest/basket/3",
+      "resourceIds": [
+        {
+          "type": "integer",
+          "value": "3"
+        }
+      ],
+      "tokenType": "bearer",
+      "originalStatus": 200,
+      "replayStatus": 200,
+      "originalSize": 557,
+      "replaySize": 557,
+      "matchType": "semantic-hash",
+      "evidence": {
+        "originalContentHash": "json:7240c2d6b9557fcca00ed9683dde785b5fe65092670a7d32d4c2ac1d59a70ae5",
+        "replayContentHash": "json:7240c2d6b9557fcca00ed9683dde785b5fe65092670a7d32d4c2ac1d59a70ae5",
+        "originalRawHash": "raw:a9d23d4b9622401a6f1a860bffc11b45e71fc6561ee0b2e0907bea36c260d014",
+        "replayRawHash": "raw:a9d23d4b9622401a6f1a860bffc11b45e71fc6561ee0b2e0907bea36c260d014",
+        "matchedHash": "json:7240c2d6b9557fcca00ed9683dde785b5fe65092670a7d32d4c2ac1d59a70ae5",
+        "matchType": "semantic-hash"
+      },
+      "request": {
+        "method": "GET",
+        "path": "/rest/basket/3",
+        "queryPresent": false,
+        "authMechanism": "bearer",
+        "userAgentPreserved": false
+      },
+      "recordedAt": 1781408388229,
+      "replayedAt": "2026-06-14T03:39:49.023Z",
+      "curl": "curl -s -H 'Authorization: Bearer '$TOKEN_B 'http://localhost:3000/rest/basket/3'",
+      "exposureSummary": {
+        "summaryGeneratedFromHash": "json:7240c2d6b9557fcca00ed9683dde785b5fe65092670a7d32d4c2ac1d59a70ae5",
+        "contentType": "application/json; charset=utf-8",
+        "bodyBytes": 557,
+        "fieldPaths": [
+          "status",
+          "data",
+          "data.id",
+          "data.coupon",
+          "data.UserId",
+          "data.createdAt",
+          "data.updatedAt",
+          "data.Products",
+          "data.Products[].id",
+          "data.Products[].name",
+          "data.Products[].description",
+          "data.Products[].price",
+          "data.Products[].deluxePrice",
+          "data.Products[].image",
+          "data.Products[].createdAt",
+          "data.Products[].updatedAt",
+          "data.Products[].deletedAt",
+          "data.Products[].BasketItem",
+          "data.Products[].BasketItem.ProductId",
+          "data.Products[].BasketItem.BasketId",
+          "data.Products[].BasketItem.id",
+          "data.Products[].BasketItem.quantity",
+          "data.Products[].BasketItem.createdAt",
+          "data.Products[].BasketItem.updatedAt"
+        ],
+        "fieldPathsTruncated": false,
+        "fieldPathLimit": 200,
+        "classificationSignals": [
+          {
+            "field": "data.id",
+            "signal": "identifier-like field name",
+            "classification": "resource_identifier",
+            "confidence": "high"
+          },
+          {
+            "field": "data.UserId",
+            "signal": "identifier-like field name",
+            "classification": "resource_identifier",
+            "confidence": "high"
+          },
+          {
+            "field": "data.Products[].id",
+            "signal": "identifier-like field name",
+            "classification": "resource_identifier",
+            "confidence": "high"
+          },
+          {
+            "field": "data.Products[].price",
+            "signal": "financial-like field name",
+            "classification": "possible_financial",
+            "confidence": "high"
+          },
+          {
+            "field": "data.Products[].BasketItem.id",
+            "signal": "identifier-like field name",
+            "classification": "resource_identifier",
+            "confidence": "high"
+          }
+        ],
+        "sanitizedFieldPaths": false,
+        "sanitizedKeyTypes": [],
+        "sanitizedKeySegments": 0,
+        "rawBodyStored": false,
+        "rawValuesStored": false
+      }
+    }
+  ]
+}

@@ -18,6 +18,7 @@ A clean run means no identical unauthorized response replay was detected in the 
 - It does not intercept HTTPS
 - It does not model roles, ownership intent, or tenant boundaries
 - It does not detect business logic errors that produce structurally different responses
+- It does not replay session-scoped endpoints without URL-level resource identifiers — these are observed but not tested as BOLA candidates
 
 These are intentional scope boundaries, not implementation gaps. See the README for the full list.
 
@@ -47,7 +48,7 @@ These are intentional scope boundaries, not implementation gaps. See the README 
 
 ## Adversarial assessment
 
-accguard v0.9.2 underwent twelve rounds of independent adversarial testing across 85+ attack vectors and 13 harnesses. Zero open findings at release. v0.10.0 added Exposure Summary verification with 657 built-in tests passing.
+accguard v0.9.2 underwent twelve rounds of independent adversarial testing across 85+ attack vectors and 13 harnesses. Zero open findings at release. v0.10.1 added Exposure Summary verification with 672 built-in tests passing.
 
 Areas tested: detection quality, hash soundness, capture pipeline, scope parsing, token handling, operational trust, proxy security, shell safety, fix interactions, and temporal contract.
 

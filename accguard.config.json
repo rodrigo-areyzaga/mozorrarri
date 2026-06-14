@@ -1,0 +1,8 @@
+{
+  "target": "http://localhost:3000",
+  "scope": ["/api/", "/rest/"],
+  "exclude": ["/rest/products/", "/api/Products/", "/api/Challenges/", "/api/Quantitys/"],
+  "port": 8877,
+  "outputFile": "accguard-juiceshop-report.json",
+  "minObserved": 3
+}

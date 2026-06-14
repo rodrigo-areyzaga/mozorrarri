@@ -176,6 +176,14 @@ function extractResourceIds(urlPath) {
       continue;
     }
 
+    // MongoDB ObjectID — 24-character hex string (may contain a-f letters).
+    // Checked after integer so all-digit 24-char strings stay as integers.
+    // Common in any MongoDB-backed API (crAPI, many Node/Python stacks).
+    if (/^[0-9a-f]{24}$/i.test(seg) && /[a-f]/i.test(seg)) {
+      add('objectid', seg);
+      continue;
+    }
+
     // Slug IDs are common, but hyphenated route names are common too:
     // /api/order-history should not become replayable just because it has a dash.
     // Treat a slug as a resource ID when it either embeds a digit (ord-1001) or
@@ -278,7 +286,7 @@ class SessionStore {
   saveTo(filePath) {
     try {
       fs.writeFileSync(filePath, JSON.stringify({
-        version:     '0.10.0',
+        version:     '0.10.1',
         generatedAt: new Date().toISOString(),
         totalCount:  this.entries.length,
         entries:     this.entries,

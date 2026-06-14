@@ -405,6 +405,14 @@ Exposure Summary is enabled by default for confirmed findings. It runs only on J
 
 ---
 
+## External validation
+
+accguard has been validated against OWASP Juice Shop using wrapper mode. In that run, accguard captured authenticated basket traffic and confirmed cross-user replay exposure on `/rest/basket/:id` endpoints with reproducible evidence.
+
+This validates accguard's core resource-ID replay model against a recognized intentionally vulnerable application. It does not imply full coverage of every Juice Shop endpoint or every authorization flaw class. See [`docs/external-validation/juice-shop.md`](docs/external-validation/juice-shop.md) for the full writeup.
+
+---
+
 ## What accguard does not prove
 
 A clean accguard run means no identical unauthorized response replay was detected in the observed traffic. It does not prove the API has no authorization bugs.

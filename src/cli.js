@@ -4,6 +4,7 @@
 const fs       = require('fs');
 const path     = require('path');
 const readline = require('readline');
+const { spawn }  = require('child_process');
 
 const { verifyTarget, verifyScope } = require('./safety');
 const { SessionStore }              = require('./session-store');
@@ -11,7 +12,7 @@ const { ProxyCore }                 = require('./proxy');
 const { runReplay }                 = require('./replay');
 const { printFindings, saveReport } = require('./reporter');
 
-const VERSION         = '0.10.0';
+const VERSION         = '0.10.1';
 const CONSENT_FILE    = path.join(process.env.HOME || process.env.USERPROFILE || '.', '.accguard_consent');
 const REQUIRED_PHRASE = 'I own or have written authorization to test the target system';
 
@@ -104,9 +105,81 @@ function loadConfig() {
   }
 }
 
+// ── Command wrapper mode ─────────────────────────────────────────────────────
+
+function parseArgs(argv) {
+  if (argv[0] !== 'run') {
+    return { mode: 'proxy', command: null, commandArgs: [] };
+  }
+
+  if (argv[1] !== '--' || argv.length < 3) {
+    console.error('[accguard] Usage: accguard run -- <test command>');
+    console.error('[accguard] Example: ACCGUARD_TOKEN_B=... accguard run -- npm test');
+    process.exit(1);
+  }
+
+  return {
+    mode:        'run',
+    command:     argv[2],
+    commandArgs: argv.slice(3),
+  };
+}
+
+function proxyEnv(port) {
+  const proxyUrl = `http://127.0.0.1:${port}`;
+  const env = { ...process.env };
+
+  // The wrapped tests need the proxy address, not the replay credential.
+  // Keep ACCGUARD_TOKEN_B inside accguard so Bob's token is not exposed to
+  // test code, browser drivers, npm lifecycle hooks, or CI logs.
+  delete env.ACCGUARD_TOKEN_B;
+
+  return {
+    ...env,
+    HTTP_PROXY:         proxyUrl,
+    http_proxy:         proxyUrl,
+    ACCGUARD_PROXY_URL: proxyUrl,
+  };
+}
+
+function startCommand(command, args, port) {
+  // Resolve Windows .cmd/.bat commands explicitly so we can use shell: false.
+  // shell: true produces a Node deprecation warning (DEP0190) about unsanitized
+  // args, which is a credibility problem for a security tool's output.
+  // On Windows, npm/npx are .cmd files — resolve them so spawn can find them.
+  let resolvedCommand = command;
+  if (process.platform === 'win32') {
+    const lower = command.toLowerCase();
+    if (lower === 'npm' || lower === 'npx' || lower === 'yarn') {
+      resolvedCommand = command + '.cmd';
+    }
+  }
+
+  const child = spawn(resolvedCommand, args, {
+    env:   proxyEnv(port),
+    stdio: 'inherit',
+    shell: false,
+  });
+
+  const result = new Promise(resolve => {
+    child.on('error', err => {
+      console.error(`[accguard] Could not run wrapped command: ${err.message}`);
+      resolve({ code: 2, signal: null });
+    });
+
+    child.on('exit', (code, signal) => {
+      resolve({ code: code === null ? 1 : code, signal });
+    });
+  });
+
+  return { child, result };
+}
+
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 async function main() {
+  const args = parseArgs(process.argv.slice(2));
+
   await requireConsent();
 
   const config = loadConfig();
@@ -130,28 +203,14 @@ async function main() {
   }
 
   const store = new SessionStore();
-  const proxy = new ProxyCore({ target, scope, exclude, store, onFlush: () => triggerFlush() });
+  let proxy;
+  let childProcess = null;
+  let finalizing = false;
 
-  try {
-    await proxy.listen(port);
-  } catch (err) {
-    console.error(`[accguard] Could not start proxy on port ${port}: ${err.message}`);
-    console.error(`[accguard] Is something already running on port ${port}?`);
-    process.exit(1);
-  }
+  const triggerFlush = async (preferredExitCode = null) => {
+    if (finalizing) return;
+    finalizing = true;
 
-  console.log(`\n  accguard v${VERSION}`);
-  console.log(`  ${'─'.repeat(44)}`);
-  console.log(`  Proxy       : http://127.0.0.1:${port}`);
-  console.log(`  Target      : ${target}`);
-  console.log(`  Scope       : ${scope.join(', ')}`);
-  console.log(`  Replay      : ${secondToken ? 'enabled' : 'disabled (set ACCGUARD_TOKEN_B)'}`);
-  console.log(`  Min observed: ${minObserved > 0 ? minObserved : 'not set'}`);
-  console.log(`  ${'─'.repeat(44)}`);
-  console.log(`  Set HTTP_PROXY=http://127.0.0.1:${port} and run your tests.`);
-  console.log(`  Press Ctrl+C or POST /--flush when done.\n`);
-
-  const triggerFlush = async () => {
     console.log('\n[accguard] Stopping proxy and running replay...');
 
     try {
@@ -176,7 +235,7 @@ async function main() {
     if (!secondToken) {
       console.log('[accguard] ACCGUARD_TOKEN_B not set — skipping replay.');
       console.log('[accguard] Set it to a second user\'s session token to enable checks.');
-      process.exit(0);
+      process.exit(preferredExitCode === null ? 0 : preferredExitCode);
     }
 
     let findings = [];
@@ -188,11 +247,70 @@ async function main() {
 
     printFindings(findings, store);
     if (outputFile) saveReport(findings, store, outputFile);
-    process.exit(findings.length > 0 ? 1 : 0);
+
+    // Exit-code disambiguation — when the wrapped command also failed, make it
+    // explicit in the terminal so CI operators don't miss the auth finding.
+    // exit 0 = clean. exit 1 = findings or test failure. exit 2 = proxy/setup.
+    const hasFindings = findings.filter(f => f.type === 'broken-access-control' || f.type === 'possible-missing-authentication').length > 0;
+    if (hasFindings && preferredExitCode !== null && preferredExitCode !== 0) {
+      console.log('\n[accguard] NOTE: The wrapped command also exited with a non-zero code.');
+      console.log('[accguard] Both the test suite failure AND the authorization findings above');
+      console.log('[accguard] contributed to this exit. Check the report for details:');
+      console.log(`[accguard]   ${outputFile || 'accguard-report.json'}\n`);
+    }
+
+    if (hasFindings) process.exit(1);
+    process.exit(preferredExitCode === null ? 0 : preferredExitCode);
   };
 
-  process.on('SIGINT',  triggerFlush);
-  process.on('SIGTERM', triggerFlush);
+  proxy = new ProxyCore({
+    target,
+    scope,
+    exclude,
+    store,
+    // In wrapper mode the child process exiting is the completion signal.
+    // Do not let wrapped test code finalize accguard early by POSTing /--flush.
+    onFlush: args.mode === 'run' ? null : () => triggerFlush(),
+  });
+
+  try {
+    await proxy.listen(port);
+  } catch (err) {
+    console.error(`[accguard] Could not start proxy on port ${port}: ${err.message}`);
+    console.error(`[accguard] Is something already running on port ${port}?`);
+    process.exit(1);
+  }
+
+  console.log(`\n  accguard v${VERSION}`);
+  console.log(`  ${'─'.repeat(44)}`);
+  console.log(`  Proxy       : http://127.0.0.1:${port}`);
+  console.log(`  Target      : ${target}`);
+  console.log(`  Scope       : ${scope.join(', ')}`);
+  console.log(`  Replay      : ${secondToken ? 'enabled' : 'disabled (set ACCGUARD_TOKEN_B)'}`);
+  console.log(`  Min observed: ${minObserved > 0 ? minObserved : 'not set'}`);
+  console.log(`  ${'─'.repeat(44)}`);
+
+  process.on('SIGINT', () => {
+    if (childProcess && !childProcess.killed) childProcess.kill('SIGINT');
+    triggerFlush(args.mode === 'run' ? 130 : null);
+  });
+  process.on('SIGTERM', () => {
+    if (childProcess && !childProcess.killed) childProcess.kill('SIGTERM');
+    triggerFlush(args.mode === 'run' ? 143 : null);
+  });
+
+  if (args.mode === 'run') {
+    console.log(`[accguard] Running wrapped command: ${args.command}\n`);
+    const wrapped = startCommand(args.command, args.commandArgs, port);
+    childProcess = wrapped.child;
+    const result = await wrapped.result;
+    childProcess = null;
+    await triggerFlush(result.code);
+    return;
+  }
+
+  console.log(`  Set HTTP_PROXY=http://127.0.0.1:${port} and run your tests.`);
+  console.log(`  Press Ctrl+C or POST /--flush when done.\n`);
 }
 
 main().catch(err => {

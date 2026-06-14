@@ -5,6 +5,43 @@ All notable changes to accguard are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.1] — 2026-06-13
+
+### Added
+
+- **`accguard run -- <command>` wrapper mode.** accguard can now wrap your test
+  command directly — starts the proxy, injects `HTTP_PROXY` into the child
+  process environment, waits for the command to exit, then replays automatically.
+  No manual coordination or second terminal required. `ACCGUARD_TOKEN_B` is
+  explicitly removed from the child environment so Bob's token is never exposed
+  to test code, browser drivers, or CI logs.
+- **Exit-code disambiguation message.** When the wrapped command exits non-zero
+  AND accguard finds confirmed findings, the terminal prints a clear note
+  distinguishing both failure causes and the report path.
+- **MongoDB ObjectID extraction.** 24-character hex strings containing at least
+  one letter (`a–f`) are now recognized as `objectid` resource IDs. Previously
+  these fell through `extractResourceIds` entirely, causing MongoDB-backed API
+  endpoints (crAPI vehicles, etc.) to be silently skipped from replay.
+- **672 automated tests.**
+
+### Fixed
+
+- Version strings unified across all source files, CLI banner, report metadata,
+  and documentation.
+- Wrapper `shell: true` replaced with `shell: false` and explicit Windows `.cmd`
+  resolution for `npm`/`npx`/`yarn`. Eliminates Node.js DEP0190 deprecation
+  warning from wrapper output.
+
+### Validation
+
+- Validated `accguard run -- <command>` against OWASP Juice Shop.
+- Confirmed deterministic cross-user replay findings on `/rest/basket/:id`
+  endpoints with reproducible evidence.
+- Documented boundary: session-scoped endpoints without URL-level resource IDs
+  are observed but not replayed as BOLA candidates.
+
+[0.10.1]: https://github.com/rodrigo-areyzaga/accguard/releases/tag/v0.10.1
+
 ## [0.10.0] — 2026-06-11
 
 v0.10.0 adds a privacy-preserving **Exposure Summary** and audit-ready evidence

@@ -1,7 +1,7 @@
-# accguard v0.10.0 — Adversarial Security Assessment
+# accguard v0.10.1 — Adversarial Security Assessment
 
-**Build:** v0.10.0 — 657 built-in tests passing
-**Assessment:** Twelve adversarial rounds (v0.9.2) plus Exposure Summary verification (v0.10.0). 85+ attack vectors. 13 harnesses. Zero open findings.
+**Build:** v0.10.1 — 672 built-in tests passing
+**Assessment:** Twelve adversarial rounds (v0.9.2) plus Exposure Summary verification (v0.10.1). 85+ attack vectors. 13 harnesses. Zero open findings.
 
 ---
 
@@ -35,7 +35,7 @@ All curl reproduction commands use POSIX single-quote escaping (shellQuote) for 
 ### Documented scope boundaries (not bugs)
 Shared authenticated resources → confirmed (mitigated by exclude list). Semantic-200 error bodies → confirmed. Volatile fields → hash diverges (awaiting ignoreKeys). Partial leaks → hash diverges. Non-identity-field array reorder → hash diverges. Opaque resource IDs → not replayable. Write-side BOLA → GET-only. HTTPS → not proxied. Post-hoc replay timing → resource deletion between record and replay.
 
-### Exposure Summary (v0.10.0)
+### Exposure Summary (v0.10.1)
 Derived metadata enrichment for confirmed BOLA findings. Does not affect detection or pass/fail behavior. Threat model:
 
 - Does not store raw response bodies
@@ -90,12 +90,12 @@ Proxy survived randomized stress testing (40 fuzz requests: random paths, 10KB U
 | 11 | authFlag non-variable parts in double quotes | shellQuote applied to all dynamic authFlag components |
 | FINAL | Scheme-less auth misidentifies token as scheme | Empty scheme for space-less Authorization values |
 | FINAL | Bare known-scheme headers recorded as auth | KNOWN_SCHEMES guard falls through |
-| 0.10.0 | Exposure Summary added | New module: field-path extraction, classification signals, evidence metadata, privacy/integrity report sections. |
-| 0.10.0 | Sensitive data leak via JSON keys | Key sanitization — dynamic/sensitive keys replaced with inert placeholders |
-| 0.10.0 | Unbounded analysis cost on large bodies | 1 MB pre-parse ceiling; oversized bodies skip enrichment, finding still reported |
-| 0.10.0 | Depth-cap off-by-one (13 segments stored for MAX_DEPTH=12) | Guard changed to `depth >= MAX_DEPTH`; deepest path now exactly 12 segments. |
-| 0.10.0 | matchType / evidenceHash could diverge on undefined-hash edge | Both now derive from a single pair of booleans; invariant `summaryGeneratedFromHash === evidence.matchedHash` holds by construction |
-| 0.10.0 | Sanitization collision hid that multiple dynamic keys existed | Added honest `sanitizedFieldPaths` / `sanitizedKeyTypes` / `sanitizedKeySegments` disclosure. |
-| 0.10.0 | Reporter claimed "JSON normalisation" for raw-prefixed (big-int) hashes | `whyFlagged()` now branches on the actual hash prefix; wording matches the proof artifact |
-| 0.10.0 | Sensitive data in URLs not addressed | Documented as a conscious reproducibility tradeoff; tests lock the behavior so a future silent change is caught. |
-| 0.10.0 | False positives from over-eager resource-ID extraction | `extractResourceIds` rewritten: skips API version segments (`v1`/`v2`/`v10`), rejects hyphenated route names directly under `/api`, extracts query-string IDs only from id-like keys. 657 tests passing. |
+| 0.10.1 | Exposure Summary added | New module: field-path extraction, classification signals, evidence metadata, privacy/integrity report sections. |
+| 0.10.1 | Sensitive data leak via JSON keys | Key sanitization — dynamic/sensitive keys replaced with inert placeholders |
+| 0.10.1 | Unbounded analysis cost on large bodies | 1 MB pre-parse ceiling; oversized bodies skip enrichment, finding still reported |
+| 0.10.1 | Depth-cap off-by-one (13 segments stored for MAX_DEPTH=12) | Guard changed to `depth >= MAX_DEPTH`; deepest path now exactly 12 segments. |
+| 0.10.1 | matchType / evidenceHash could diverge on undefined-hash edge | Both now derive from a single pair of booleans; invariant `summaryGeneratedFromHash === evidence.matchedHash` holds by construction |
+| 0.10.1 | Sanitization collision hid that multiple dynamic keys existed | Added honest `sanitizedFieldPaths` / `sanitizedKeyTypes` / `sanitizedKeySegments` disclosure. |
+| 0.10.1 | Reporter claimed "JSON normalisation" for raw-prefixed (big-int) hashes | `whyFlagged()` now branches on the actual hash prefix; wording matches the proof artifact |
+| 0.10.1 | Sensitive data in URLs not addressed | Documented as a conscious reproducibility tradeoff; tests lock the behavior so a future silent change is caught. |
+| 0.10.1 | False positives from over-eager resource-ID extraction | `extractResourceIds` rewritten: skips API version segments (`v1`/`v2`/`v10`), rejects hyphenated route names directly under `/api`, extracts query-string IDs only from id-like keys. 672 tests passing. |
