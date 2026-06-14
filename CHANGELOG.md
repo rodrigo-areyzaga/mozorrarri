@@ -39,6 +39,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   endpoints with reproducible evidence.
 - Documented boundary: session-scoped endpoints without URL-level resource IDs
   are observed but not replayed as BOLA candidates.
+- Added VAmPI boundary validation: Flask/JWT traffic is captured correctly,
+  while plain-word path identifiers (`/users/v1/name1`) are intentionally not
+  replayed as BOLA candidates. Zero findings on a clean run — correct behavior,
+  honestly reported.
 
 [0.10.1]: https://github.com/rodrigo-areyzaga/accguard/releases/tag/v0.10.1
 
