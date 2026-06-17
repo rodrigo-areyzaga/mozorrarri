@@ -11,7 +11,7 @@ const PRIVATE_RANGES = [
   /^172\.(1[6-9]|2\d|3[01])\./,     // RFC 1918 class B
   /^192\.168\./,                     // RFC 1918 class C
   /^::1$/,                           // IPv6 loopback
-  /^fc[0-9a-f]{2}:/i,               // IPv6 unique local
+  /^f[cd][0-9a-f]{2}:/i,             // IPv6 unique local (fc00::/7 — covers fc and fd ranges)
   /^fe80:/i,                         // IPv6 link-local
 ];
 
@@ -67,6 +67,16 @@ function normalizeIPv4(hostname) {
   return null; // not a numeric IP — let DNS handle it
 }
 
+// Strip brackets from IPv6 addresses as returned by new URL().hostname.
+// new URL("http://[::1]:3000").hostname === "[::1]" — brackets included.
+// All internal checks expect the bare address without brackets.
+function stripIPv6Brackets(hostname) {
+  if (hostname && hostname.startsWith('[') && hostname.endsWith(']')) {
+    return hostname.slice(1, -1);
+  }
+  return hostname;
+}
+
 function isPrivateAddress(address) {
   const normalized = normalizeIPv4(address) || address;
   return PRIVATE_RANGES.some(r => r.test(normalized));
@@ -74,11 +84,13 @@ function isPrivateAddress(address) {
 
 // isPrivateHost is exported for tests and legacy callers.
 // It checks both the raw hostname and its normalized form.
+// Handles bracketed IPv6 addresses (e.g. "[::1]") from URL parsing.
 function isPrivateHost(hostname) {
   if (!hostname) return false;
   if (/^localhost$/i.test(hostname)) return true;
-  const normalized = normalizeIPv4(hostname);
-  const toCheck = normalized || hostname;
+  const bare = stripIPv6Brackets(hostname);
+  const normalized = normalizeIPv4(bare);
+  const toCheck = normalized || bare;
   return PRIVATE_RANGES.some(r => r.test(toCheck));
 }
 
@@ -98,7 +110,9 @@ async function verifyTarget(targetUrl) {
     );
   }
 
-  const hostname = url.hostname;
+  // Strip brackets from IPv6 hostnames — new URL() includes them
+  // but isPrivateHost and DNS resolution expect bare addresses.
+  const hostname = stripIPv6Brackets(url.hostname);
 
   // Normalize first — catches decimal, hex, octal IP representations
   // before they reach the DNS resolver.
@@ -141,4 +155,4 @@ function verifyScope(scope) {
   }
 }
 
-module.exports = { verifyTarget, verifyScope, isPrivateHost, normalizeIPv4 };
+module.exports = { verifyTarget, verifyScope, isPrivateHost, normalizeIPv4, stripIPv6Brackets };

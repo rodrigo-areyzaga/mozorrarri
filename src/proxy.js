@@ -5,6 +5,7 @@ const https  = require('https');
 const crypto = require('crypto');
 const { URL } = require('url');
 const { contentHash } = require('./replay');
+const { stripIPv6Brackets } = require('./safety');
 
 // Normalize a URL path for scope/exclude matching.
 // Applies the same transformations most web servers apply before routing:
@@ -113,7 +114,10 @@ class ProxyCore {
       }
 
       const options = {
-        hostname: this.target.hostname,
+        // Strip brackets from IPv6 hostnames — new URL().hostname includes them
+        // (e.g. "[::1]") but http.request() expects bare addresses ("::1").
+        // The Host header retains brackets as required by RFC 2732.
+        hostname: stripIPv6Brackets(this.target.hostname),
         port:     this.target.port || (this.target.protocol === 'https:' ? 443 : 80),
         path:     targetPath,
         method:   incomingReq.method,

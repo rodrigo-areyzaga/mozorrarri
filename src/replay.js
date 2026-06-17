@@ -5,6 +5,7 @@ const https  = require('https');
 const crypto = require('crypto');
 const { URL } = require('url');
 const { buildExposureSummary } = require('./exposure-summary');
+const { stripIPv6Brackets }    = require('./safety');
 
 // Shell-safe quoting for curl reproduction commands.
 // Wraps a value in single quotes, escaping any embedded single quotes.
@@ -209,7 +210,7 @@ function replayRequest({ targetUrl, entry, secondToken }) {
   return new Promise((resolve, reject) => {
     const target  = new URL(targetUrl);
     const options = {
-      hostname: target.hostname,
+      hostname: stripIPv6Brackets(target.hostname),
       port:     target.port || (target.protocol === 'https:' ? 443 : 80),
       path:     entry.path + entry.query,
       method:   entry.method,
@@ -273,7 +274,7 @@ async function runReplay({ store, targetUrl, secondToken, logger }) {
     const canaryResult = await new Promise((resolve, reject) => {
       const transport = canaryUrl.protocol === 'https:' ? require('https') : require('http');
       const req = transport.request({
-        hostname: canaryUrl.hostname,
+        hostname: stripIPv6Brackets(canaryUrl.hostname),
         port:     canaryUrl.port || 80,
         path:     '/',
         method:   'HEAD',
@@ -354,7 +355,7 @@ async function runReplay({ store, targetUrl, secondToken, logger }) {
           const target = new URL(targetUrl);
           const transport = target.protocol === 'https:' ? require('https') : require('http');
           const req = transport.request({
-            hostname: target.hostname,
+            hostname: stripIPv6Brackets(target.hostname),
             port:     target.port || 80,
             path:     entry.path + entry.query,
             method:   entry.method,
