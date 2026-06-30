@@ -161,12 +161,12 @@ assert(xApiKey !== null,                 'X-API-Key header recognized');
 assert(xApiKey.type === 'api-key',       'X-API-Key type is api-key');
 assert(xApiKey.raw === 'sk-test-12345',  'X-API-Key value extracted correctly');
 
-// ACCGUARD_API_KEY_HEADER override
-process.env.ACCGUARD_API_KEY_HEADER = 'x-custom-key';
+// MOZORRARRI_API_KEY_HEADER override
+process.env.MOZORRARRI_API_KEY_HEADER = 'x-custom-key';
 const customKey = extractToken({ 'x-custom-key': 'custom-tok' });
 assert(customKey !== null,               'custom API key header recognized');
 assert(customKey.type === 'api-key',     'custom API key type is api-key');
-delete process.env.ACCGUARD_API_KEY_HEADER;
+delete process.env.MOZORRARRI_API_KEY_HEADER;
 
 // Empty bearer still falls through to cookie with non-Bearer auth schemes present
 const emptyBearerFallthrough2 = extractToken({
@@ -247,13 +247,13 @@ for (const [cookieName, tokenValue] of frameworks) {
 const csrf = extractToken({ cookie: 'csrftoken=abc123; xsrf-token=def456' });
 assert(csrf === null, 'csrftoken and xsrf-token must not be extracted as session tokens');
 
-// ACCGUARD_COOKIE_NAME override — operator-specified name takes priority
-process.env.ACCGUARD_COOKIE_NAME = 'my_custom_session';
+// MOZORRARRI_COOKIE_NAME override — operator-specified name takes priority
+process.env.MOZORRARRI_COOKIE_NAME = 'my_custom_session';
 const custom = extractToken({ cookie: 'my_custom_session=custom-tok-xyz' });
-assert(custom !== null,                    'ACCGUARD_COOKIE_NAME override works');
+assert(custom !== null,                    'MOZORRARRI_COOKIE_NAME override works');
 assert(custom.raw === 'custom-tok-xyz',    'correct token value from override');
 assert(custom.cookieName === 'my_custom_session', 'correct cookieName from override');
-delete process.env.ACCGUARD_COOKIE_NAME; // clean up
+delete process.env.MOZORRARRI_COOKIE_NAME; // clean up
 
 // Regression: cookieName must come from the matched session cookie,
 // not from the first cookie in the header string.
@@ -1484,13 +1484,13 @@ section('reporter.js — path privacy disclosure');
     recordedAt: Date.now(), replayedAt: new Date().toISOString(),
     curl: "curl -s -H 'Authorization: Bearer '$TOKEN_B 'http://x/api/users/alice@company.com'",
   }];
-  const pathPriv = tmpPath('accguard-pathpriv-report');
+  const pathPriv = tmpPath('mozorrarri-pathpriv-report');
   saveReport(synthFindings, synthStore, pathPriv);
   const raw = fs.readFileSync(pathPriv, 'utf8');
   const rep = JSON.parse(raw);
 
   // The privacy section asserts only body/value/token guarantees — it must NOT
-  // claim path sanitization (which accguard does not do).
+  // claim path sanitization (which mozorrarri does not do).
   assert(rep.privacy.rawBodiesStored === false, 'privacy: bodies not stored');
   assert(rep.privacy.rawValuesStored === false, 'privacy: values not stored');
   assert(rep.privacy.rawTokensStored === false, 'privacy: tokens not stored');
@@ -1834,7 +1834,7 @@ async function runIntegration() {
   section('integration — report structure');
 
   const fs = require('fs');
-  const reportPath = tmpPath('accguard-test-report');
+  const reportPath = tmpPath('mozorrarri-test-report');
   const { saveReport } = require(root + '/src/reporter');
   saveReport(findings, iStore, reportPath);
 
@@ -1852,8 +1852,8 @@ async function runIntegration() {
 
   // Integrity section
   assert(!!report.integrity, 'report has integrity section');
-  assert(report.integrity.reportSchema === 'accguard-report-v1', 'integrity: schema correct');
-  assert(report.integrity.generatedBy === 'accguard 0.10.1', 'integrity: generatedBy correct');
+  assert(report.integrity.reportSchema === 'mozorrarri-report-v1', 'integrity: schema correct');
+  assert(report.integrity.generatedBy === 'mozorrarri 0.10.1', 'integrity: generatedBy correct');
   assert(report.integrity.detectionPrimitive === 'cross-user replay hash match', 'integrity: primitive correct');
   assert(report.integrity.bodyRetentionPolicy === 'not-stored', 'integrity: body retention correct');
   assert(report.integrity.tokenRetentionPolicy === 'fingerprint-only', 'integrity: token retention correct');
@@ -2047,9 +2047,9 @@ async function runIntegration() {
   const wrapperProxyPort = probeServer.address().port;
   await new Promise(resolve => probeServer.close(resolve));
 
-  const wrapperDir = fs2.mkdtempSync(path.join(os.tmpdir(), `accguard-wrapper-${process.pid}-`));
-  const wrapperConfig = path.join(wrapperDir, 'accguard.config.json');
-  const wrapperReport = path.join(wrapperDir, 'accguard-report.json');
+  const wrapperDir = fs2.mkdtempSync(path.join(os.tmpdir(), `mozorrarri-wrapper-${process.pid}-`));
+  const wrapperConfig = path.join(wrapperDir, 'mozorrarri.config.json');
+  const wrapperReport = path.join(wrapperDir, 'mozorrarri-report.json');
   fs2.writeFileSync(wrapperConfig, JSON.stringify({
     target:      `http://127.0.0.1:${wrapperTargetPort}`,
     port:        wrapperProxyPort,
@@ -2060,12 +2060,12 @@ async function runIntegration() {
 
   const wrappedClient = `
     const http = require('http');
-    const proxy = new URL(process.env.ACCGUARD_PROXY_URL);
-    if (process.env.ACCGUARD_TOKEN_B) {
-      console.error('ACCGUARD_TOKEN_B leaked to wrapped command');
+    const proxy = new URL(process.env.MOZORRARRI_PROXY_URL);
+    if (process.env.MOZORRARRI_TOKEN_B) {
+      console.error('MOZORRARRI_TOKEN_B leaked to wrapped command');
       process.exit(8);
     }
-    const target = process.env.ACCGUARD_TEST_TARGET;
+    const target = process.env.MOZORRARRI_TEST_TARGET;
     const req = http.request({
       hostname: proxy.hostname,
       port: proxy.port,
@@ -2090,9 +2090,9 @@ async function runIntegration() {
         ...process.env,
         CI:                   'true',
         HOME:                 wrapperDir,
-        ACCGUARD_CONFIG:      wrapperConfig,
-        ACCGUARD_TOKEN_B:     'bob-token',
-        ACCGUARD_TEST_TARGET: `http://127.0.0.1:${wrapperTargetPort}`,
+        MOZORRARRI_CONFIG:      wrapperConfig,
+        MOZORRARRI_TOKEN_B:     'bob-token',
+        MOZORRARRI_TEST_TARGET: `http://127.0.0.1:${wrapperTargetPort}`,
       },
     });
 
@@ -2117,7 +2117,7 @@ async function runIntegration() {
     'run wrapper executes the supplied command path');
   assert(!(wrapperRun.stdout + wrapperRun.stderr).includes('SECRET-SHOULD-NOT-APPEAR'),
     'run wrapper does not echo wrapped command arguments that may contain secrets');
-  assert(!(wrapperRun.stdout + wrapperRun.stderr).includes('ACCGUARD_TOKEN_B leaked'),
+  assert(!(wrapperRun.stdout + wrapperRun.stderr).includes('MOZORRARRI_TOKEN_B leaked'),
     'run wrapper does not expose replay token to wrapped command');
   assert(fs2.existsSync(wrapperReport), 'run wrapper writes the same JSON report file');
 
@@ -2125,16 +2125,16 @@ async function runIntegration() {
   assert(wrapperReportJson.findings.some(f => f.path === '/api/orders/777'),
     'run wrapper report contains replay finding from wrapped test traffic');
 
-  // A wrapped command knows ACCGUARD_PROXY_URL. In run mode, child process exit
+  // A wrapped command knows MOZORRARRI_PROXY_URL. In run mode, child process exit
   // is the completion signal; /--flush must not let test code finalize early.
   const flushProbe = http.createServer();
   await new Promise(resolve => flushProbe.listen(0, '127.0.0.1', resolve));
   const flushProxyPort = flushProbe.address().port;
   await new Promise(resolve => flushProbe.close(resolve));
 
-  const flushDir = fs2.mkdtempSync(path.join(os.tmpdir(), `accguard-wrapper-flush-${process.pid}-`));
-  const flushConfig = path.join(flushDir, 'accguard.config.json');
-  const flushReport = path.join(flushDir, 'accguard-report.json');
+  const flushDir = fs2.mkdtempSync(path.join(os.tmpdir(), `mozorrarri-wrapper-flush-${process.pid}-`));
+  const flushConfig = path.join(flushDir, 'mozorrarri.config.json');
+  const flushReport = path.join(flushDir, 'mozorrarri-report.json');
   fs2.writeFileSync(flushConfig, JSON.stringify({
     target:      `http://127.0.0.1:${wrapperTargetPort}`,
     port:        flushProxyPort,
@@ -2145,8 +2145,8 @@ async function runIntegration() {
 
   const flushThenRequestClient = `
     const http = require('http');
-    const proxy = new URL(process.env.ACCGUARD_PROXY_URL);
-    const target = process.env.ACCGUARD_TEST_TARGET;
+    const proxy = new URL(process.env.MOZORRARRI_PROXY_URL);
+    const target = process.env.MOZORRARRI_TEST_TARGET;
 
     function postFlush(next) {
       const req = http.request({
@@ -2190,9 +2190,9 @@ async function runIntegration() {
         ...process.env,
         CI:                   'true',
         HOME:                 flushDir,
-        ACCGUARD_CONFIG:      flushConfig,
-        ACCGUARD_TOKEN_B:     'bob-token',
-        ACCGUARD_TEST_TARGET: `http://127.0.0.1:${wrapperTargetPort}`,
+        MOZORRARRI_CONFIG:      flushConfig,
+        MOZORRARRI_TOKEN_B:     'bob-token',
+        MOZORRARRI_TEST_TARGET: `http://127.0.0.1:${wrapperTargetPort}`,
       },
     });
 

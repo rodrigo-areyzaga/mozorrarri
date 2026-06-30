@@ -3,6 +3,6 @@
   "scope": ["/api/", "/rest/"],
   "exclude": ["/rest/products/", "/api/Products/", "/api/Challenges/", "/api/Quantitys/"],
   "port": 8877,
-  "outputFile": "accguard-juiceshop-report.json",
+  "outputFile": "mozorrarri-juiceshop-report.json",
   "minObserved": 3
 }

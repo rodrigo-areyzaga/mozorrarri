@@ -104,7 +104,7 @@ async function verifyTarget(targetUrl) {
 
   if (url.protocol === 'https:') {
     throw new Error(
-      `Target is HTTPS — accguard currently records HTTP traffic only.\n` +
+      `Target is HTTPS — mozorrarri currently records HTTP traffic only.\n` +
       `Change your target to http://${url.host} to get started.\n` +
       `(Most local test environments work fine over HTTP.)`
     );
@@ -138,7 +138,7 @@ async function verifyTarget(targetUrl) {
   if (publicAddresses.length > 0) {
     throw new Error(
       `SAFETY BLOCK: Target "${hostname}" resolves to public IP(s): ${publicAddresses.join(', ')}.\n` +
-      `accguard only works against local or private-network targets.\n` +
+      `mozorrarri only works against local or private-network targets.\n` +
       `Pointing this tool at systems you do not own or have written\n` +
       `authorization to test may be a criminal offence under the CFAA,\n` +
       `Computer Misuse Act, or equivalent laws in your jurisdiction.`
@@ -149,7 +149,7 @@ async function verifyTarget(targetUrl) {
 function verifyScope(scope) {
   if (!scope || !Array.isArray(scope) || scope.length === 0) {
     throw new Error(
-      'No scope declared. Add a "scope" array to your accguard.config.json.\n' +
+      'No scope declared. Add a "scope" array to your mozorrarri.config.json.\n' +
       'Example: { "scope": ["/api/"] }'
     );
   }

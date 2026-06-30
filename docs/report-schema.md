@@ -1,6 +1,6 @@
-# accguard Report Schema — v1
+# mozorrarri Report Schema — v1
 
-accguard v0.10.1 produces JSON reports with the following structure.
+mozorrarri v0.10.1 produces JSON reports with the following structure.
 
 ---
 
@@ -8,7 +8,7 @@ accguard v0.10.1 produces JSON reports with the following structure.
 
 | Field | Type | Description |
 |---|---|---|
-| `version` | string | accguard version that generated the report |
+| `version` | string | mozorrarri version that generated the report |
 | `generatedAt` | ISO-8601 string | When the report was generated |
 | `reportType` | string | Always `"authorization-regression-evidence"` |
 | `privacy` | object | Trust model — what the report does and does not store |
@@ -28,7 +28,7 @@ accguard v0.10.1 produces JSON reports with the following structure.
 
 | Field | Type | Description |
 |---|---|---|
-| `reportSchema` | string | Schema identifier: `"accguard-report-v1"` |
+| `reportSchema` | string | Schema identifier: `"mozorrarri-report-v1"` |
 | `generatedBy` | string | Tool name and version |
 | `detectionPrimitive` | string | `"cross-user replay hash match"` |
 | `bodyRetentionPolicy` | string | `"not-stored"` |

@@ -170,9 +170,9 @@ class ProxyCore {
     try {
       upstream = await this._forward(req, bodyBuffer, inScope);
     } catch (err) {
-      this.logger.error(`[accguard] Forward error: ${err.message}`);
+      this.logger.error(`[mozorrarri] Forward error: ${err.message}`);
       res.writeHead(502);
-      res.end('accguard: upstream connection failed');
+      res.end('mozorrarri: upstream connection failed');
       return;
     }
 
@@ -197,15 +197,15 @@ class ProxyCore {
     return new Promise((resolve, reject) => {
       this.server = http.createServer((req, res) => {
         this._handleRequest(req, res).catch(err => {
-          this.logger.error(`[accguard] Unhandled error: ${err.message}`);
-          if (!res.headersSent) { res.writeHead(500); res.end('accguard: internal error'); }
+          this.logger.error(`[mozorrarri] Unhandled error: ${err.message}`);
+          if (!res.headersSent) { res.writeHead(500); res.end('mozorrarri: internal error'); }
         });
       });
 
       // Catch HTTPS CONNECT attempts — explain clearly instead of failing silently
       this.server.on('connect', (req, socket) => {
         this.logger.log(
-          `[accguard] HTTPS request for "${req.url}" — accguard records HTTP only.\n` +
+          `[mozorrarri] HTTPS request for "${req.url}" — mozorrarri records HTTP only.\n` +
           `           Update your target to http:// or configure your app to use HTTP in tests.`
         );
         socket.write('HTTP/1.1 501 HTTPS Not Supported\r\n\r\n');
@@ -218,7 +218,7 @@ class ProxyCore {
       // SAFETY: bind only to loopback — cannot be reached from outside this machine
       this.server.listen(port, '127.0.0.1', () => {
         this.server.removeListener('error', reject);
-        this.logger.log(`[accguard] Proxy listening on 127.0.0.1:${port} → ${this.target.href}`);
+        this.logger.log(`[mozorrarri] Proxy listening on 127.0.0.1:${port} → ${this.target.href}`);
         resolve();
       });
     });

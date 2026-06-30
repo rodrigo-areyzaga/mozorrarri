@@ -1,8 +1,8 @@
 # Security
 
-## What accguard claims
+## What mozorrarri claims
 
-accguard confirms one specific thing: **user B received the same protected resource representation that user A received**, using authenticated traffic your tests already generate.
+mozorrarri confirms one specific thing: **user B received the same protected resource representation that user A received**, using authenticated traffic your tests already generate.
 
 That claim is deterministic. The hash either matches or it doesn't. There is no scoring, no inference, no confidence threshold.
 
@@ -10,7 +10,7 @@ A clean run means no identical unauthorized response replay was detected in the 
 
 ---
 
-## What accguard does not claim
+## What mozorrarri does not claim
 
 - It does not detect partial leaks (user B receives a subset of user A's data)
 - It does not detect volatile-field leaks (timestamps, trace IDs cause hash divergence)
@@ -28,15 +28,15 @@ These are intentional scope boundaries, not implementation gaps. See the README 
 
 **Localhost only.** The proxy binds exclusively to `127.0.0.1`. It cannot be reached from the network.
 
-**No data storage.** accguard records request metadata and response hashes. It does not store response bodies, request bodies, or raw token values. Token fingerprints use one-way SHA-256.
+**No data storage.** mozorrarri records request metadata and response hashes. It does not store response bodies, request bodies, or raw token values. Token fingerprints use one-way SHA-256.
 
-**Exposure Summary — sanitized derived metadata only.** For confirmed broken-access-control findings, accguard inspects the replay response body while it is already in memory during replay and extracts sanitized field paths, content type, body size, classification signals, and evidence hashes. It does not store raw response bodies, raw field values, or raw tokens. Dynamic or sensitive-looking JSON object keys (emails, UUIDs, tokens, long numeric IDs, high-entropy strings) are replaced with inert placeholders such as `[email-key]` or `[uuid-key]` so they are never persisted as field-path segments. Responses larger than 1 MB skip exposure analysis entirely — the finding is still reported. The raw body is discarded after inspection.
+**Exposure Summary — sanitized derived metadata only.** For confirmed broken-access-control findings, mozorrarri inspects the replay response body while it is already in memory during replay and extracts sanitized field paths, content type, body size, classification signals, and evidence hashes. It does not store raw response bodies, raw field values, or raw tokens. Dynamic or sensitive-looking JSON object keys (emails, UUIDs, tokens, long numeric IDs, high-entropy strings) are replaced with inert placeholders such as `[email-key]` or `[uuid-key]` so they are never persisted as field-path segments. Responses larger than 1 MB skip exposure analysis entirely — the finding is still reported. The raw body is discarded after inspection.
 
-**Reports are security artifacts.** Reports may contain sensitive metadata such as endpoint paths, resource IDs, field names, and reproduction commands. Treat accguard reports as security artifacts and handle them accordingly.
+**Reports are security artifacts.** Reports may contain sensitive metadata such as endpoint paths, resource IDs, field names, and reproduction commands. Treat mozorrarri reports as security artifacts and handle them accordingly.
 
-**Sensitive data in URLs is preserved, not sanitized.** While Exposure Summary sanitizes dynamic JSON object keys, accguard deliberately does **not** sanitize the request path, query string, `resourceIds`, or the `curl` reproduction command. If an API places sensitive data in the URL — e.g. `GET /api/users/alice@company.com`, `GET /api/sessions/<jwt>`, or `GET /api/cards/4111111111111111` — that data is preserved verbatim in the report, because the path is essential for reproducing the finding. This is a conscious reproducibility/privacy tradeoff. The implication: a report's paths and reproduction commands can contain emails, tokens, or other identifiers that appear in URLs. Handle reports accordingly, and avoid sharing them in untrusted channels.
+**Sensitive data in URLs is preserved, not sanitized.** While Exposure Summary sanitizes dynamic JSON object keys, mozorrarri deliberately does **not** sanitize the request path, query string, `resourceIds`, or the `curl` reproduction command. If an API places sensitive data in the URL — e.g. `GET /api/users/alice@company.com`, `GET /api/sessions/<jwt>`, or `GET /api/cards/4111111111111111` — that data is preserved verbatim in the report, because the path is essential for reproducing the finding. This is a conscious reproducibility/privacy tradeoff. The implication: a report's paths and reproduction commands can contain emails, tokens, or other identifiers that appear in URLs. Handle reports accordingly, and avoid sharing them in untrusted channels.
 
-**No outbound connections.** accguard only communicates with the configured target. It does not send telemetry, phone home, or make connections to any external service.
+**No outbound connections.** mozorrarri only communicates with the configured target. It does not send telemetry, phone home, or make connections to any external service.
 
 **Consent gate.** First-run interactive consent is required in local environments. CI environments skip the prompt and log an explicit acknowledgment.
 
@@ -48,7 +48,7 @@ These are intentional scope boundaries, not implementation gaps. See the README 
 
 ## Adversarial assessment
 
-accguard v0.9.2 underwent twelve rounds of independent adversarial testing across 85+ attack vectors and 13 harnesses. Zero open findings at release. v0.10.1 added Exposure Summary verification with 672 built-in tests passing.
+mozorrarri v0.9.2 underwent twelve rounds of independent adversarial testing across 85+ attack vectors and 13 harnesses. Zero open findings at release. v0.10.1 added Exposure Summary verification with 672 built-in tests passing.
 
 Areas tested: detection quality, hash soundness, capture pipeline, scope parsing, token handling, operational trust, proxy security, shell safety, fix interactions, and temporal contract.
 
@@ -58,12 +58,12 @@ Twenty-two distinct bugs were found and fixed during assessment. The full findin
 
 ## Reporting a vulnerability
 
-If you find a correctness bug or security issue in accguard itself, please open a GitHub issue describing:
+If you find a correctness bug or security issue in mozorrarri itself, please open a GitHub issue describing:
 
 - Which component is affected (`proxy.js`, `replay.js`, `session-store.js`, `safety.js`, `reporter.js`, `cli.js`)
 - A minimal reproduction case or test vector
 - Whether it affects detection accuracy, scope enforcement, or the proxy's own security
 
-accguard is a developer tool intended for use against systems you own or have written authorization to test. Reports about detection limitations or scope boundaries that are already documented are noted but unlikely to result in changes without a concrete real-world case demonstrating impact.
+mozorrarri is a developer tool intended for use against systems you own or have written authorization to test. Reports about detection limitations or scope boundaries that are already documented are noted but unlikely to result in changes without a concrete real-world case demonstrating impact.
 
 There is no bug bounty program. Issues are reviewed by the maintainer.

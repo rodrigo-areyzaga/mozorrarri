@@ -2,7 +2,7 @@
 'use strict';
 
 // Run this FIRST to create Alice and Bob and get their tokens.
-// Then use Bob's token as ACCGUARD_TOKEN_B when running the main test.
+// Then use Bob's token as MOZORRARRI_TOKEN_B when running the main test.
 
 const http = require('http');
 const TARGET = 'http://localhost:3000';
@@ -32,8 +32,8 @@ async function setup() {
 
   const tokens = {};
   for (const user of [
-    { email: 'alice-accguard@test.com', password: 'Alice1234!' },
-    { email: 'bob-accguard@test.com',   password: 'Bob1234!'   },
+    { email: 'alice-mozorrarri@test.com', password: 'Alice1234!' },
+    { email: 'bob-mozorrarri@test.com',   password: 'Bob1234!'   },
   ]) {
     // Register (ignore if already exists)
     await post('/api/Users/', {
@@ -58,9 +58,9 @@ async function setup() {
     }
   }
 
-  const bobToken = tokens['bob-accguard@test.com'];
+  const bobToken = tokens['bob-mozorrarri@test.com'];
   if (bobToken) {
-    console.log('\n  ── Bob\'s token (for ACCGUARD_TOKEN_B) ──────────────');
+    console.log('\n  ── Bob\'s token (for MOZORRARRI_TOKEN_B) ──────────────');
     console.log(`  ${bobToken}`);
     console.log('  ────────────────────────────────────────────────────');
     console.log('\n  This token is printed for local Juice Shop validation only.');

@@ -13,7 +13,7 @@ const { runReplay }                 = require('./replay');
 const { printFindings, saveReport } = require('./reporter');
 
 const VERSION         = '0.10.1';
-const CONSENT_FILE    = path.join(process.env.HOME || process.env.USERPROFILE || '.', '.accguard_consent');
+const CONSENT_FILE    = path.join(process.env.HOME || process.env.USERPROFILE || '.', '.MOZORRARRI_consent');
 const REQUIRED_PHRASE = 'I own or have written authorization to test the target system';
 
 // Detect CI environments — GitHub Actions, CircleCI, Jenkins, GitLab CI,
@@ -37,14 +37,14 @@ async function requireConsent() {
         ci:       true,
       }), 'utf8');
     } catch { /* non-fatal */ }
-    console.log('[accguard] CI environment detected — authorization gate skipped.');
-    console.log('[accguard] By running accguard in CI you confirm you own or have');
-    console.log('[accguard] written authorization to test the target system.\n');
+    console.log('[mozorrarri] CI environment detected — authorization gate skipped.');
+    console.log('[mozorrarri] By running mozorrarri in CI you confirm you own or have');
+    console.log('[mozorrarri] written authorization to test the target system.\n');
     return;
   }
 
   console.log('\n' + '═'.repeat(66));
-  console.log(`  accguard v${VERSION} — authorization required`);
+  console.log(`  mozorrarri v${VERSION} — authorization required`);
   console.log('═'.repeat(66));
   console.log('\n  This tool probes your application for access control');
   console.log('  vulnerabilities. You must only use it against systems');
@@ -70,7 +70,7 @@ async function requireConsent() {
       agreedAt: new Date().toISOString(),
       phrase:   REQUIRED_PHRASE,
     }), 'utf8');
-    console.log('\n  Consent recorded. accguard is ready to use.\n');
+    console.log('\n  Consent recorded. mozorrarri is ready to use.\n');
   } catch (err) {
     console.warn(`\n  Warning: could not save consent record: ${err.message}`);
     console.warn('  You will be asked to confirm again on the next run.\n');
@@ -80,11 +80,11 @@ async function requireConsent() {
 // ── Config loading ────────────────────────────────────────────────────────────
 
 function loadConfig() {
-  const configPath = path.resolve(process.env.ACCGUARD_CONFIG || 'accguard.config.json');
+  const configPath = path.resolve(process.env.MOZORRARRI_CONFIG || 'mozorrarri.config.json');
 
   if (!fs.existsSync(configPath)) {
-    console.error(`[accguard] No config found at ${configPath}`);
-    console.error('[accguard] Create accguard.config.json — see README for format.');
+    console.error(`[mozorrarri] No config found at ${configPath}`);
+    console.error('[mozorrarri] Create mozorrarri.config.json — see README for format.');
     process.exit(1);
   }
 
@@ -92,15 +92,15 @@ function loadConfig() {
   try {
     raw = fs.readFileSync(configPath, 'utf8');
   } catch (err) {
-    console.error(`[accguard] Could not read config at ${configPath}: ${err.message}`);
+    console.error(`[mozorrarri] Could not read config at ${configPath}: ${err.message}`);
     process.exit(1);
   }
 
   try {
     return JSON.parse(raw);
   } catch (err) {
-    console.error(`[accguard] Config file is not valid JSON: ${err.message}`);
-    console.error(`[accguard] Check ${configPath} for syntax errors.`);
+    console.error(`[mozorrarri] Config file is not valid JSON: ${err.message}`);
+    console.error(`[mozorrarri] Check ${configPath} for syntax errors.`);
     process.exit(1);
   }
 }
@@ -113,8 +113,8 @@ function parseArgs(argv) {
   }
 
   if (argv[1] !== '--' || argv.length < 3) {
-    console.error('[accguard] Usage: accguard run -- <test command>');
-    console.error('[accguard] Example: ACCGUARD_TOKEN_B=... accguard run -- npm test');
+    console.error('[mozorrarri] Usage: mozorrarri run -- <test command>');
+    console.error('[mozorrarri] Example: MOZORRARRI_TOKEN_B=... mozorrarri run -- npm test');
     process.exit(1);
   }
 
@@ -130,15 +130,15 @@ function proxyEnv(port) {
   const env = { ...process.env };
 
   // The wrapped tests need the proxy address, not the replay credential.
-  // Keep ACCGUARD_TOKEN_B inside accguard so Bob's token is not exposed to
+  // Keep MOZORRARRI_TOKEN_B inside mozorrarri so Bob's token is not exposed to
   // test code, browser drivers, npm lifecycle hooks, or CI logs.
-  delete env.ACCGUARD_TOKEN_B;
+  delete env.MOZORRARRI_TOKEN_B;
 
   return {
     ...env,
     HTTP_PROXY:         proxyUrl,
     http_proxy:         proxyUrl,
-    ACCGUARD_PROXY_URL: proxyUrl,
+    MOZORRARRI_PROXY_URL: proxyUrl,
   };
 }
 
@@ -163,7 +163,7 @@ function startCommand(command, args, port) {
 
   const result = new Promise(resolve => {
     child.on('error', err => {
-      console.error(`[accguard] Could not run wrapped command: ${err.message}`);
+      console.error(`[mozorrarri] Could not run wrapped command: ${err.message}`);
       resolve({ code: 2, signal: null });
     });
 
@@ -188,17 +188,17 @@ async function main() {
     scope,
     exclude     = [],
     port        = 8877,
-    outputFile  = 'accguard-report.json',
+    outputFile  = 'mozorrarri-report.json',
     minObserved = 0,   // exit non-zero if fewer than this many requests observed
   } = config;
 
-  const secondToken = process.env.ACCGUARD_TOKEN_B;
+  const secondToken = process.env.MOZORRARRI_TOKEN_B;
 
   try {
     await verifyTarget(target);
     verifyScope(scope);
   } catch (err) {
-    console.error(`\n[accguard] ${err.message}\n`);
+    console.error(`\n[mozorrarri] ${err.message}\n`);
     process.exit(1);
   }
 
@@ -211,30 +211,30 @@ async function main() {
     if (finalizing) return;
     finalizing = true;
 
-    console.log('\n[accguard] Stopping proxy and running replay...');
+    console.log('\n[mozorrarri] Stopping proxy and running replay...');
 
     try {
       await proxy.close();
     } catch (err) {
-      console.error(`[accguard] Error closing proxy: ${err.message}`);
+      console.error(`[mozorrarri] Error closing proxy: ${err.message}`);
     }
 
     // ── minObserved floor ─────────────────────────────────────────────────────
     // If fewer than minObserved requests were recorded, the proxy may have been
     // bypassed silently. Exit non-zero so CI fails visibly rather than green.
     if (minObserved > 0 && store.size() < minObserved) {
-      console.error(`\n[accguard] PROXY BYPASS DETECTED`);
-      console.error(`[accguard] Expected at least ${minObserved} authenticated requests.`);
-      console.error(`[accguard] Only ${store.size()} were observed.`);
-      console.error(`[accguard] Check that HTTP_PROXY is set and your HTTP client respects it.`);
-      console.error(`[accguard] Note: Node fetch (undici), axios, and Playwright require`);
-      console.error(`[accguard] explicit proxy configuration — see README troubleshooting.\n`);
+      console.error(`\n[mozorrarri] PROXY BYPASS DETECTED`);
+      console.error(`[mozorrarri] Expected at least ${minObserved} authenticated requests.`);
+      console.error(`[mozorrarri] Only ${store.size()} were observed.`);
+      console.error(`[mozorrarri] Check that HTTP_PROXY is set and your HTTP client respects it.`);
+      console.error(`[mozorrarri] Note: Node fetch (undici), axios, and Playwright require`);
+      console.error(`[mozorrarri] explicit proxy configuration — see README troubleshooting.\n`);
       process.exit(2); // exit 2 = proxy bypass (distinct from exit 1 = findings)
     }
 
     if (!secondToken) {
-      console.log('[accguard] ACCGUARD_TOKEN_B not set — skipping replay.');
-      console.log('[accguard] Set it to a second user\'s session token to enable checks.');
+      console.log('[mozorrarri] MOZORRARRI_TOKEN_B not set — skipping replay.');
+      console.log('[mozorrarri] Set it to a second user\'s session token to enable checks.');
       process.exit(preferredExitCode === null ? 0 : preferredExitCode);
     }
 
@@ -242,7 +242,7 @@ async function main() {
     try {
       findings = await runReplay({ store, targetUrl: target, secondToken });
     } catch (err) {
-      console.error(`[accguard] Replay failed: ${err.message}`);
+      console.error(`[mozorrarri] Replay failed: ${err.message}`);
     }
 
     printFindings(findings, store);
@@ -253,10 +253,10 @@ async function main() {
     // exit 0 = clean. exit 1 = findings or test failure. exit 2 = proxy/setup.
     const hasFindings = findings.filter(f => f.type === 'broken-access-control' || f.type === 'possible-missing-authentication').length > 0;
     if (hasFindings && preferredExitCode !== null && preferredExitCode !== 0) {
-      console.log('\n[accguard] NOTE: The wrapped command also exited with a non-zero code.');
-      console.log('[accguard] Both the test suite failure AND the authorization findings above');
-      console.log('[accguard] contributed to this exit. Check the report for details:');
-      console.log(`[accguard]   ${outputFile || 'accguard-report.json'}\n`);
+      console.log('\n[mozorrarri] NOTE: The wrapped command also exited with a non-zero code.');
+      console.log('[mozorrarri] Both the test suite failure AND the authorization findings above');
+      console.log('[mozorrarri] contributed to this exit. Check the report for details:');
+      console.log(`[mozorrarri]   ${outputFile || 'mozorrarri-report.json'}\n`);
     }
 
     if (hasFindings) process.exit(1);
@@ -269,24 +269,24 @@ async function main() {
     exclude,
     store,
     // In wrapper mode the child process exiting is the completion signal.
-    // Do not let wrapped test code finalize accguard early by POSTing /--flush.
+    // Do not let wrapped test code finalize mozorrarri early by POSTing /--flush.
     onFlush: args.mode === 'run' ? null : () => triggerFlush(),
   });
 
   try {
     await proxy.listen(port);
   } catch (err) {
-    console.error(`[accguard] Could not start proxy on port ${port}: ${err.message}`);
-    console.error(`[accguard] Is something already running on port ${port}?`);
+    console.error(`[mozorrarri] Could not start proxy on port ${port}: ${err.message}`);
+    console.error(`[mozorrarri] Is something already running on port ${port}?`);
     process.exit(1);
   }
 
-  console.log(`\n  accguard v${VERSION}`);
+  console.log(`\n  mozorrarri v${VERSION}`);
   console.log(`  ${'─'.repeat(44)}`);
   console.log(`  Proxy       : http://127.0.0.1:${port}`);
   console.log(`  Target      : ${target}`);
   console.log(`  Scope       : ${scope.join(', ')}`);
-  console.log(`  Replay      : ${secondToken ? 'enabled' : 'disabled (set ACCGUARD_TOKEN_B)'}`);
+  console.log(`  Replay      : ${secondToken ? 'enabled' : 'disabled (set MOZORRARRI_TOKEN_B)'}`);
   console.log(`  Min observed: ${minObserved > 0 ? minObserved : 'not set'}`);
   console.log(`  ${'─'.repeat(44)}`);
 
@@ -300,7 +300,7 @@ async function main() {
   });
 
   if (args.mode === 'run') {
-    console.log(`[accguard] Running wrapped command: ${args.command}\n`);
+    console.log(`[mozorrarri] Running wrapped command: ${args.command}\n`);
     const wrapped = startCommand(args.command, args.commandArgs, port);
     childProcess = wrapped.child;
     const result = await wrapped.result;
@@ -314,6 +314,6 @@ async function main() {
 }
 
 main().catch(err => {
-  console.error('[accguard] Fatal:', err.message);
+  console.error('[mozorrarri] Fatal:', err.message);
   process.exit(1);
 });

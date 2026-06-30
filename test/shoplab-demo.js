@@ -7,7 +7,7 @@
 //
 // What it does:
 //   1. Starts ShopLab on port 3100
-//   2. Starts accguard proxy on port 8877
+//   2. Starts mozorrarri proxy on port 8877
 //   3. Exercises the API as Alice (user A)
 //   4. Replays every request as Bob (user B)
 //   5. Reports confirmed unauthorized data replays
@@ -54,7 +54,7 @@ function req(port, path, token, method, body) {
 async function run() {
   const divider = '═'.repeat(60);
   console.log('\n' + divider);
-  console.log('  ShopLab × accguard — demo');
+  console.log('  ShopLab × mozorrarri — demo');
   console.log(divider + '\n');
 
   // 1. Start ShopLab — explicitly call listen() since required as a module
@@ -66,7 +66,7 @@ async function run() {
   });
   console.log(`[1/4] ShopLab ready   → http://127.0.0.1:${SHOPLAB_PORT}`);
 
-  // 2. Start accguard
+  // 2. Start mozorrarri
   await verifyTarget(TARGET);
   verifyScope(['/api/']);
 
@@ -79,7 +79,7 @@ async function run() {
     logger:  { log: () => {}, error: console.error },
   });
   await proxy.listen(PROXY_PORT);
-  console.log(`[2/4] accguard ready  → http://127.0.0.1:${PROXY_PORT}`);
+  console.log(`[2/4] mozorrarri ready  → http://127.0.0.1:${PROXY_PORT}`);
 
   // 3. Exercise as Alice through proxy
   console.log('[3/4] Running scenario as Alice...\n');

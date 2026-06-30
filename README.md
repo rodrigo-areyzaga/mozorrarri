@@ -1,20 +1,20 @@
-# accguard
+# mozorrarri
 
-![CI](https://github.com/rodrigo-areyzaga/accguard/actions/workflows/ci.yml/badge.svg)
+![CI](https://github.com/rodrigo-areyzaga/mozorrarri/actions/workflows/ci.yml/badge.svg)
 
 **Confirmed unauthorized data replay detection from real authenticated traffic.**
 
 Broken access control remains the most common high-impact API vulnerability. Existing scanners can't reliably catch it — they don't have authenticated context. They've never logged into your app.
 
-Your test suite has that context. accguard uses it.
+Your test suite has that context. mozorrarri uses it.
 
 ---
 
 ## Try it now
 
 ```bash
-git clone https://github.com/rodrigo-areyzaga/accguard
-cd accguard
+git clone https://github.com/rodrigo-areyzaga/mozorrarri
+cd mozorrarri
 node demo.js
 ```
 
@@ -24,7 +24,7 @@ No install. No config. No accounts. Under 90 seconds from clone to first finding
 
 ## What it does
 
-accguard confirms one high-confidence failure mode: user B receiving the same protected resource representation originally observed under user A, using authenticated traffic your tests already generate.
+mozorrarri confirms one high-confidence failure mode: user B receiving the same protected resource representation originally observed under user A, using authenticated traffic your tests already generate.
 
 ```
 GET /api/orders/ord-1001
@@ -50,18 +50,18 @@ This is confirmed unauthorized data replay detection: run it on every commit, ca
 
 ## How it works
 
-1. accguard starts as a local HTTP proxy on port `8877`
-2. Your tests run normally — accguard silently records every authenticated request
-3. When tests finish, accguard replays each request using a second user's token
+1. mozorrarri starts as a local HTTP proxy on port `8877`
+2. Your tests run normally — mozorrarri silently records every authenticated request
+3. When tests finish, mozorrarri replays each request using a second user's token
 4. Any endpoint that returns structurally identical authenticated data to a different user is flagged
 
 No changes to your test code. No new testing concepts. One config file.
 
-![accguard architecture](docs/architecture.svg)
+![mozorrarri architecture](docs/architecture.svg)
 
 ### How confirmation works — deterministic, not heuristic
 
-accguard doesn't estimate or guess. The detection is a hash comparison:
+mozorrarri doesn't estimate or guess. The detection is a hash comparison:
 
 ```
 Alice's response:
@@ -73,7 +73,7 @@ Bob's replay:
 Match → identical authenticated data exposure
 ```
 
-For each replayed request accguard:
+For each replayed request mozorrarri:
 
 1. Parses the response as JSON
 2. Normalises key order recursively — `{"b":2,"a":1}` and `{"a":1,"b":2}` hash identically
@@ -83,7 +83,7 @@ The hashes either match or they don't. There is no scoring, no threshold, no gre
 
 For non-JSON responses it falls back to a raw byte hash. Body size is never used as a signal.
 
-**Scope:** accguard detects endpoints that return structurally identical authenticated data to a different user. Partial information leaks and structurally different but unauthorized responses require manual review. The tool prioritises precision — one confirmed finding you can trust is worth more than ten warnings you have to triage.
+**Scope:** mozorrarri detects endpoints that return structurally identical authenticated data to a different user. Partial information leaks and structurally different but unauthorized responses require manual review. The tool prioritises precision — one confirmed finding you can trust is worth more than ten warnings you have to triage.
 
 ### Known scope limitations
 
@@ -115,11 +115,11 @@ const context = await browser.newContext({
 });
 ```
 
-**`204 No Content` responses are not flagged.** Some APIs return `204` with no body on successful resource access. accguard requires a non-empty response body to confirm a finding — a `204` replay will not be reported even if user B should not have access. These endpoints require manual verification.
+**`204 No Content` responses are not flagged.** Some APIs return `204` with no body on successful resource access. mozorrarri requires a non-empty response body to confirm a finding — a `204` replay will not be reported even if user B should not have access. These endpoints require manual verification.
 
-**Multi-user test suites.** If your test suite exercises more than two users, accguard records all of their traffic but replays everything with a single `ACCGUARD_TOKEN_B`. Requests made by user C will be replayed as user B, which may not reflect the access boundary you want to test. Document your expected principal pairs explicitly in your test config.
+**Multi-user test suites.** If your test suite exercises more than two users, mozorrarri records all of their traffic but replays everything with a single `MOZORRARRI_TOKEN_B`. Requests made by user C will be replayed as user B, which may not reflect the access boundary you want to test. Document your expected principal pairs explicitly in your test config.
 
-**accguard models identity through authorization credentials only.** Applications using additional tenant-isolation headers — such as `X-Tenant-ID`, `X-Org-ID`, or custom routing metadata — may not be fully covered by token-swap replay alone. If your app uses secondary isolation mechanisms beyond bearer tokens or session cookies, those endpoints require additional manual verification.
+**mozorrarri models identity through authorization credentials only.** Applications using additional tenant-isolation headers — such as `X-Tenant-ID`, `X-Org-ID`, or custom routing metadata — may not be fully covered by token-swap replay alone. If your app uses secondary isolation mechanisms beyond bearer tokens or session cookies, those endpoints require additional manual verification.
 
 **Responses with volatile fields may not be flagged.** If API responses include fields that change per-request — timestamps, trace IDs, request UUIDs, nonces — the normalized JSON hashes will differ between user A and user B even when the underlying data is identical. This is an intentional tradeoff: determinism over recall. A future configuration option (`ignoreKeys`) is planned for teams whose APIs include volatile metadata fields.
 
@@ -147,15 +147,15 @@ curl --noproxy "" --proxy http://127.0.0.1:8877 http://localhost:3000/api/orders
 NO_PROXY="" HTTP_PROXY=http://127.0.0.1:8877 npm test
 ```
 
-**Repeated endpoint calls are deduplicated.** If your test suite calls `GET /api/orders/1001` fifteen times (setup, assertions, teardown), accguard records all fifteen but replays once. One finding per unique endpoint — not fifteen.
+**Repeated endpoint calls are deduplicated.** If your test suite calls `GET /api/orders/1001` fifteen times (setup, assertions, teardown), mozorrarri records all fifteen but replays once. One finding per unique endpoint — not fifteen.
 
 ### Token type awareness
 
-accguard records how each token was delivered — `Authorization: Bearer` header or session cookie — and replays using the same mechanism. Rails apps using `session=` cookies, Django apps using `sessionid=`, and Bearer token APIs all work correctly without configuration.
+mozorrarri records how each token was delivered — `Authorization: Bearer` header or session cookie — and replays using the same mechanism. Rails apps using `session=` cookies, Django apps using `sessionid=`, and Bearer token APIs all work correctly without configuration.
 
 ### Clean runs are meaningful
 
-When accguard finds nothing, it tells you what it checked:
+When mozorrarri finds nothing, it tells you what it checked:
 
 ```
 ✓  No authorization regressions detected.
@@ -170,23 +170,23 @@ That's not silence — it's verification. You know the tool exercised real authe
 
 ## Works with
 
-**Any backend stack** — Node.js, Rails, Django, Laravel, Spring. If it serves HTTP, accguard watches it.
+**Any backend stack** — Node.js, Rails, Django, Laravel, Spring. If it serves HTTP, mozorrarri watches it.
 
-**Mobile app backends** — The access control lives in the API, not the device. Point your API-level test suite through accguard and it catches authorization regressions in your iOS or Android backend the same way it would for a web app.
+**Mobile app backends** — The access control lives in the API, not the device. Point your API-level test suite through mozorrarri and it catches authorization regressions in your iOS or Android backend the same way it would for a web app.
 
-**Any test runner** can be used as a traffic source — Cypress, Playwright, Jest, pytest, RSpec, curl scripts — as long as its HTTP traffic is routed through the accguard proxy. Some runners require explicit proxy configuration (see troubleshooting below).
+**Any test runner** can be used as a traffic source — Cypress, Playwright, Jest, pytest, RSpec, curl scripts — as long as its HTTP traffic is routed through the mozorrarri proxy. Some runners require explicit proxy configuration (see troubleshooting below).
 
 ---
 
 ## Setup
 
 ```bash
-git clone https://github.com/rodrigo-areyzaga/accguard
-cd accguard
+git clone https://github.com/rodrigo-areyzaga/mozorrarri
+cd mozorrarri
 node test/run.js   # confirm all tests pass
 ```
 
-Create `accguard.config.json` in your project root:
+Create `mozorrarri.config.json` in your project root:
 
 ```json
 {
@@ -194,7 +194,7 @@ Create `accguard.config.json` in your project root:
   "port": 8877,
   "scope": ["/api/"],
   "exclude": ["/api/health", "/api/public/"],
-  "outputFile": "accguard-report.json"
+  "outputFile": "mozorrarri-report.json"
 }
 ```
 
@@ -204,33 +204,33 @@ Create `accguard.config.json` in your project root:
 
 ### Option A — wrapper mode (recommended)
 
-accguard can wrap your test command directly. It starts the proxy, runs your tests with `HTTP_PROXY` injected automatically, then replays when the tests finish. No manual coordination required.
+mozorrarri can wrap your test command directly. It starts the proxy, runs your tests with `HTTP_PROXY` injected automatically, then replays when the tests finish. No manual coordination required.
 
 ```bash
-ACCGUARD_TOKEN_B="second-user-token" node src/cli.js run -- npm test
+MOZORRARRI_TOKEN_B="second-user-token" node src/cli.js run -- npm test
 ```
 
 With Cypress:
 
 ```bash
-ACCGUARD_TOKEN_B="second-user-token" node src/cli.js run -- npx cypress run
+MOZORRARRI_TOKEN_B="second-user-token" node src/cli.js run -- npx cypress run
 ```
 
 With pytest:
 
 ```bash
-ACCGUARD_TOKEN_B="second-user-token" node src/cli.js run -- pytest tests/
+MOZORRARRI_TOKEN_B="second-user-token" node src/cli.js run -- pytest tests/
 ```
 
-The syntax is `accguard run -- <your test command>`. accguard exits when your tests finish and outputs findings immediately after.
+The syntax is `mozorrarri run -- <your test command>`. mozorrarri exits when your tests finish and outputs findings immediately after.
 
-> **Note:** `ACCGUARD_TOKEN_B` is not passed to your test command — it is only used internally by accguard for replay. Your test code never sees Bob's token.
+> **Note:** `MOZORRARRI_TOKEN_B` is not passed to your test command — it is only used internally by mozorrarri for replay. Your test code never sees Bob's token.
 
 ### Option B — manual mode (two terminals)
 
 ```bash
-# Terminal 1 — start accguard
-ACCGUARD_TOKEN_B="second-user-token" node src/cli.js
+# Terminal 1 — start mozorrarri
+MOZORRARRI_TOKEN_B="second-user-token" node src/cli.js
 
 # Terminal 2 — run your tests through the proxy
 HTTP_PROXY=http://127.0.0.1:8877 npm test
@@ -248,13 +248,13 @@ HTTP_PROXY=http://127.0.0.1:8877 npm test
 - name: Start app
   run: npm start &
 
-- name: Run tests with accguard
+- name: Run tests with mozorrarri
   run: node src/cli.js run -- npm test
   env:
-    ACCGUARD_TOKEN_B: ${{ secrets.TEST_USER_B_TOKEN }}
+    MOZORRARRI_TOKEN_B: ${{ secrets.TEST_USER_B_TOKEN }}
 ```
 
-accguard starts the proxy, runs `npm test` with `HTTP_PROXY` injected, replays when tests finish, and exits. One step, no coordination.
+mozorrarri starts the proxy, runs `npm test` with `HTTP_PROXY` injected, replays when tests finish, and exits. One step, no coordination.
 
 ### CI with manual flush (multi-step)
 
@@ -262,32 +262,32 @@ accguard starts the proxy, runs `npm test` with `HTTP_PROXY` injected, replays w
 - name: Start app
   run: npm start &
 
-- name: Start accguard
+- name: Start mozorrarri
   run: node src/cli.js &
   env:
-    ACCGUARD_TOKEN_B: ${{ secrets.TEST_USER_B_TOKEN }}
+    MOZORRARRI_TOKEN_B: ${{ secrets.TEST_USER_B_TOKEN }}
 
 - name: Run tests
   run: HTTP_PROXY=http://127.0.0.1:8877 npm test
 
-- name: Flush accguard
+- name: Flush mozorrarri
   run: curl -s -X POST http://127.0.0.1:8877/--flush
 ```
 
-accguard exits with code `1` if authorization regressions are detected, `0` if clean. The CI step fails automatically when an ownership boundary is violated.
+mozorrarri exits with code `1` if authorization regressions are detected, `0` if clean. The CI step fails automatically when an ownership boundary is violated.
 
 To preserve the report as a downloadable CI artifact — including on failed runs:
 
 ```yaml
-- name: Save accguard report
+- name: Save mozorrarri report
   uses: actions/upload-artifact@v4
   with:
-    name: accguard-report
-    path: accguard-report.json
+    name: mozorrarri-report
+    path: mozorrarri-report.json
   if: always()
 ```
 
-The `if: always()` is important — without it, the artifact is skipped when accguard exits with code `1`, which is exactly the run you most want to keep.
+The `if: always()` is important — without it, the artifact is skipped when mozorrarri exits with code `1`, which is exactly the run you most want to keep.
 
 ---
 
@@ -295,7 +295,7 @@ The `if: always()` is important — without it, the artifact is skipped when acc
 
 ```
 ────────────────────────────────────────────────────────────────
-  accguard — authorization regression results
+  mozorrarri — authorization regression results
 ────────────────────────────────────────────────────────────────
   Requests observed    : 42
   Replay candidates    : 19
@@ -338,17 +338,17 @@ Each finding is deterministic — hashes either match or they don't.
 
 ## Exposure Summary
 
-For confirmed broken-access-control findings, accguard summarises which response field paths were exposed to the replay user.
+For confirmed broken-access-control findings, mozorrarri summarises which response field paths were exposed to the replay user.
 
 The Exposure Summary inspects response bodies while they are already in memory during replay. It does not persist response bodies.
 
-**accguard stores:**
+**mozorrarri stores:**
 - Sanitized field paths (e.g. `owner`, `email`, `balance`)
 - Content type and body size
 - Evidence hash (the SHA-256 hash that proved the match)
 - Conservative classification signals (field-name-based)
 
-**accguard does not store:**
+**mozorrarri does not store:**
 - Raw response bodies
 - Raw field values
 - Raw tokens
@@ -407,37 +407,37 @@ Exposure Summary is enabled by default for confirmed findings. It runs only on J
 
 ## External validation
 
-accguard has been validated against OWASP Juice Shop using wrapper mode. In that run, accguard captured authenticated basket traffic and confirmed cross-user replay exposure on `/rest/basket/:id` endpoints with reproducible evidence.
+mozorrarri has been validated against OWASP Juice Shop using wrapper mode. In that run, mozorrarri captured authenticated basket traffic and confirmed cross-user replay exposure on `/rest/basket/:id` endpoints with reproducible evidence.
 
-This validates accguard's core resource-ID replay model against a recognized intentionally vulnerable application. It does not imply full coverage of every Juice Shop endpoint or every authorization flaw class. See [`docs/external-validation/juice-shop.md`](docs/external-validation/juice-shop.md) for the full writeup.
+This validates mozorrarri's core resource-ID replay model against a recognized intentionally vulnerable application. It does not imply full coverage of every Juice Shop endpoint or every authorization flaw class. See [`docs/external-validation/juice-shop.md`](docs/external-validation/juice-shop.md) for the full writeup.
 
 ---
 
-## What accguard does not prove
+## What mozorrarri does not prove
 
-A clean accguard run means no identical unauthorized response replay was detected in the observed traffic. It does not prove the API has no authorization bugs.
+A clean mozorrarri run means no identical unauthorized response replay was detected in the observed traffic. It does not prove the API has no authorization bugs.
 
-Specifically, accguard does not detect:
+Specifically, mozorrarri does not detect:
 
 - **Partial leaks** — if user B receives a subset of user A's data, the hashes differ and the finding is missed
 - **Volatile-field leaks** — if responses include per-request fields (timestamps, trace IDs, nonces), hashes differ even when the underlying data is identical
 - **POST/mutation-side BOLA** — only GET requests are replayed; write-side access control failures are out of scope
 - **GraphQL and body-based reads** — resource IDs in request bodies are not extracted or replayed
-- **Partial authorization** — an endpoint that returns different data to different users may still have an authorization bug accguard cannot see
-- **Business logic errors** — accguard does not model ownership intent, role hierarchies, or tenant boundaries
+- **Partial authorization** — an endpoint that returns different data to different users may still have an authorization bug mozorrarri cannot see
+- **Business logic errors** — mozorrarri does not model ownership intent, role hierarchies, or tenant boundaries
 
 These are intentional scope boundaries, not implementation gaps. The narrower the claim, the more trustworthy the finding.
 
-> accguard confirms one specific thing: user B received the same protected representation user A received. If the failure mode looks different from that, it is outside scope by design.
+> mozorrarri confirms one specific thing: user B received the same protected representation user A received. If the failure mode looks different from that, it is outside scope by design.
 
 ---
 
-## What accguard does not do
+## What mozorrarri does not do
 
 These are constraints, not missing features. They communicate what the tool is.
 
 - No HTTPS interception — no certificate injection, ever
-- No request mutation or fuzzing — accguard does not alter method, path, query, or body
+- No request mutation or fuzzing — mozorrarri does not alter method, path, query, or body
 - No browser automation or crawling — only traffic your tests generate
 - No port scanning or host discovery
 - No cloud telemetry — nothing leaves your machine
@@ -449,7 +449,7 @@ These are constraints, not missing features. They communicate what the tool is.
 
 ## Legal notice
 
-You must only use accguard against systems you own or have explicit written permission to test. Unauthorized use may violate the Computer Fraud and Abuse Act (US), the Computer Misuse Act (UK), or equivalent laws in your jurisdiction. accguard only operates against localhost and private network addresses. Any attempt to point it at a public IP address will be blocked at startup.
+You must only use mozorrarri against systems you own or have explicit written permission to test. Unauthorized use may violate the Computer Fraud and Abuse Act (US), the Computer Misuse Act (UK), or equivalent laws in your jurisdiction. mozorrarri only operates against localhost and private network addresses. Any attempt to point it at a public IP address will be blocked at startup.
 
 ---
 
@@ -461,23 +461,23 @@ You must only use accguard against systems you own or have explicit written perm
 | `scope`      | yes | Path prefixes to record — e.g. `["/api/"]` |
 | `exclude`    | no  | Path prefixes to always skip |
 | `port`       | no  | Proxy port — default `8877` |
-| `outputFile` | no  | JSON report path — default `accguard-report.json` |
+| `outputFile` | no  | JSON report path — default `mozorrarri-report.json` |
 
 | Environment variable | Description |
 |---|---|
-| `ACCGUARD_TOKEN_B`   | Second user's session token — required for detection |
-| `ACCGUARD_CONFIG`    | Path to config file — default `./accguard.config.json` |
-| `ACCGUARD_MAX_ENTRIES` | Max session store entries — default `10000` |
-| `ACCGUARD_COOKIE_NAME` | Force a specific cookie name for session extraction — use when your framework uses a non-standard name not in the default list |
-| `ACCGUARD_API_KEY_HEADER` | Header name for API key authentication — default `x-api-key`. Use if your API uses a custom header like `x-client-key` |
+| `MOZORRARRI_TOKEN_B`   | Second user's session token — required for detection |
+| `MOZORRARRI_CONFIG`    | Path to config file — default `./mozorrarri.config.json` |
+| `MOZORRARRI_MAX_ENTRIES` | Max session store entries — default `10000` |
+| `MOZORRARRI_COOKIE_NAME` | Force a specific cookie name for session extraction — use when your framework uses a non-standard name not in the default list |
+| `MOZORRARRI_API_KEY_HEADER` | Header name for API key authentication — default `x-api-key`. Use if your API uses a custom header like `x-client-key` |
 
-**Supported auth schemes:** Bearer tokens, session cookies (13+ framework defaults), HTTP Basic, Token (Django REST Framework), ApiKey, and `X-API-Key` header. For non-Bearer schemes, accguard records and fingerprints the credential — replay will use `ACCGUARD_TOKEN_B` with the original scheme prefix.
+**Supported auth schemes:** Bearer tokens, session cookies (13+ framework defaults), HTTP Basic, Token (Django REST Framework), ApiKey, and `X-API-Key` header. For non-Bearer schemes, mozorrarri records and fingerprints the credential — replay will use `MOZORRARRI_TOKEN_B` with the original scheme prefix.
 
-Simple prefix schemes (`Token abc123`, `ApiKey sk-xyz`, `Basic dXNlcjI6...`) can be replayed directly by setting `ACCGUARD_TOKEN_B` to a valid credential value. HTTP Digest is challenge-response and is generally not replay-safe — accguard can fingerprint it for recording, but replay will likely fail to authenticate unless `ACCGUARD_TOKEN_B` is a pre-computed full Digest header value.
+Simple prefix schemes (`Token abc123`, `ApiKey sk-xyz`, `Basic dXNlcjI6...`) can be replayed directly by setting `MOZORRARRI_TOKEN_B` to a valid credential value. HTTP Digest is challenge-response and is generally not replay-safe — mozorrarri can fingerprint it for recording, but replay will likely fail to authenticate unless `MOZORRARRI_TOKEN_B` is a pre-computed full Digest header value.
 
 **Header fidelity:** replay reconstructs a minimal request (auth, accept, accept-encoding, original User-Agent). Headers like `Accept-Language`, `X-Tenant-ID`, or custom feature-flag headers carried by the original request are not replayed. If your app varies response content based on these headers, hashes may differ even when the underlying data is identical — a real BOLA may be missed. Add shared-context headers to your scope configuration notes for manual verification.
 
-accguard automatically recognizes session cookies from most frameworks including Express (`connect.sid`), Laravel (`laravel_session`), PHP (`PHPSESSID`), Java (`JSESSIONID`), NextAuth, ASP.NET, Rails (`_session_id`), and Django (`sessionid`). Set `ACCGUARD_COOKIE_NAME` only if your framework uses a non-standard name.
+mozorrarri automatically recognizes session cookies from most frameworks including Express (`connect.sid`), Laravel (`laravel_session`), PHP (`PHPSESSID`), Java (`JSESSIONID`), NextAuth, ASP.NET, Rails (`_session_id`), and Django (`sessionid`). Set `MOZORRARRI_COOKIE_NAME` only if your framework uses a non-standard name.
 
 Add `minObserved` to your config to catch proxy bypass silently:
 ```json
@@ -485,7 +485,7 @@ Add `minObserved` to your config to catch proxy bypass silently:
   "minObserved": 5
 }
 ```
-If fewer than `minObserved` requests are recorded, accguard exits with code `2` and explains the likely cause. This prevents a misconfigured proxy from producing a false green run.
+If fewer than `minObserved` requests are recorded, mozorrarri exits with code `2` and explains the likely cause. This prevents a misconfigured proxy from producing a false green run.
 
 ---
 

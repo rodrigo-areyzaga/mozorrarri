@@ -8,8 +8,8 @@
     "rawValuesStored": false
   },
   "integrity": {
-    "reportSchema": "accguard-report-v1",
-    "generatedBy": "accguard 0.10.1",
+    "reportSchema": "mozorrarri-report-v1",
+    "generatedBy": "mozorrarri 0.10.1",
     "detectionPrimitive": "cross-user replay hash match",
     "bodyRetentionPolicy": "not-stored",
     "tokenRetentionPolicy": "fingerprint-only"

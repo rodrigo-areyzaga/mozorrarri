@@ -2,10 +2,10 @@
 'use strict';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// accguard demo
+// mozorrarri demo
 //
-// git clone https://github.com/rodrigo-areyzaga/accguard
-// cd accguard
+// git clone https://github.com/rodrigo-areyzaga/mozorrarri
+// cd mozorrarri
 // node demo.js
 //
 // No install. No config. No accounts.
@@ -55,7 +55,7 @@ async function run() {
   const line = '─'.repeat(58);
 
   console.log('\n' + line);
-  console.log(`  accguard v${VERSION} — authorization regression testing`);
+  console.log(`  mozorrarri v${VERSION} — authorization regression testing`);
   console.log('  ShopLab demo · 4 hidden IDOR vulnerabilities');
   console.log(line + '\n');
 
@@ -72,7 +72,7 @@ async function run() {
   console.log(`     Open it in your browser — looks like a normal shop.`);
   console.log(`     Four IDOR vulnerabilities are completely invisible in the UI.\n`);
 
-  // 2. Start accguard proxy
+  // 2. Start mozorrarri proxy
   await verifyTarget(TARGET);
   verifyScope(['/api/']);
 
@@ -86,7 +86,7 @@ async function run() {
   });
 
   await proxy.listen(PROXY_PORT);
-  console.log(`  ✓  accguard proxy     http://127.0.0.1:${PROXY_PORT}\n`);
+  console.log(`  ✓  mozorrarri proxy     http://127.0.0.1:${PROXY_PORT}\n`);
 
   // 3. Exercise the API as Alice — everything looks normal
   console.log(`  Running authenticated session as Alice...\n`);
@@ -122,7 +122,7 @@ async function run() {
   });
 
   printFindings(findings, store);
-  saveReport(findings, store, 'accguard-demo-report.json');
+  saveReport(findings, store, 'mozorrarri-demo-report.json');
 
   // 5. Summary
   console.log(line);
@@ -132,7 +132,7 @@ async function run() {
     const classes = new Set(findings.map(f => f.path.replace(/[a-z0-9-]+$/i, ':id'))).size;
     console.log(`  ${findings.length} unauthorized access attempts confirmed across ${classes} IDOR endpoint pattern${classes > 1 ? 's' : ''}.`);
     console.log(`  Each finding above includes a curl command to reproduce it.`);
-    console.log(`  Full report saved to accguard-demo-report.json`);
+    console.log(`  Full report saved to mozorrarri-demo-report.json`);
   }
   console.log(line + '\n');
 

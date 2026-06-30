@@ -3,5 +3,5 @@
   "port": 8877,
   "scope": ["/api/"],
   "exclude": ["/api/health", "/api/public/"],
-  "outputFile": "accguard-report.json"
+  "outputFile": "mozorrarri-report.json"
 }

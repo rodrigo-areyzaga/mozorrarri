@@ -65,7 +65,7 @@ function printFindings(findings, store) {
   const review  = findings.filter(f => f.type === 'needs-review');
 
   console.log('\n' + divider);
-  console.log('  accguard — authorization regression results');
+  console.log('  mozorrarri — authorization regression results');
   console.log(divider);
   console.log(`  Requests observed    : ${cov.observed}`);
   console.log(`  Replay candidates    : ${cov.replayed}`);
@@ -191,8 +191,8 @@ function saveReport(findings, store, outputPath) {
       rawValuesStored: false,
     },
     integrity: {
-      reportSchema:        'accguard-report-v1',
-      generatedBy:         'accguard 0.10.1',
+      reportSchema:        'mozorrarri-report-v1',
+      generatedBy:         'mozorrarri 0.10.1',
       detectionPrimitive:  'cross-user replay hash match',
       bodyRetentionPolicy: 'not-stored',
       tokenRetentionPolicy: 'fingerprint-only',
@@ -211,10 +211,10 @@ function saveReport(findings, store, outputPath) {
 
   try {
     fs.writeFileSync(outputPath, JSON.stringify(report, null, 2), 'utf8');
-    console.log(`[accguard] Report saved to ${outputPath}`);
+    console.log(`[mozorrarri] Report saved to ${outputPath}`);
   } catch (err) {
-    console.error(`[accguard] Could not save report to ${outputPath}: ${err.message}`);
-    console.error(`[accguard] Findings printed above — copy them before closing.`);
+    console.error(`[mozorrarri] Could not save report to ${outputPath}: ${err.message}`);
+    console.error(`[mozorrarri] Findings printed above — copy them before closing.`);
   }
 }
 

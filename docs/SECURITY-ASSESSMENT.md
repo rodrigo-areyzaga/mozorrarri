@@ -1,4 +1,4 @@
-# accguard v0.10.1 — Adversarial Security Assessment
+# mozorrarri v0.10.1 — Adversarial Security Assessment
 
 **Build:** v0.10.1 — 672 built-in tests passing
 **Assessment:** Twelve adversarial rounds (v0.9.2) plus Exposure Summary verification (v0.10.1). 85+ attack vectors. 13 harnesses. Zero open findings.
@@ -13,7 +13,7 @@ The tool is clean. Ship it.
 
 ## Part 1: The One Thing
 
-*Does accguard correctly tell you whether user B can access user A's resources?*
+*Does mozorrarri correctly tell you whether user B can access user A's resources?*
 
 **Yes**, within its documented scope (read-side, HTTP, known ID patterns). Every correctness bug found across twelve adversarial rounds has been fixed and verified.
 
@@ -21,7 +21,7 @@ The tool is clean. Ship it.
 Hash comparison with sortKeys normalization, big-integer precision preservation, Unicode NFC normalization, identity-field array reorder absorption, trivial-payload downgrade, and hash-family consistency with rawHash cross-family fallback. Verified against 20+ detection-quality scenarios including adversarial false-positive and false-negative constructions.
 
 ### Capture pipeline
-Bearer tokens, cookies (13+ framework defaults, ACCGUARD_COOKIE_NAME override, array-header iteration, empty-bearer fallthrough), non-Bearer Authorization schemes (Basic, Digest, Token, ApiKey — recorded as other-auth with scheme reconstruction), X-API-Key (ACCGUARD_API_KEY_HEADER configurable), and scheme-less Authorization headers. All verified end-to-end through proxy→record→replay→finding.
+Bearer tokens, cookies (13+ framework defaults, MOZORRARRI_COOKIE_NAME override, array-header iteration, empty-bearer fallthrough), non-Bearer Authorization schemes (Basic, Digest, Token, ApiKey — recorded as other-auth with scheme reconstruction), X-API-Key (MOZORRARRI_API_KEY_HEADER configurable), and scheme-less Authorization headers. All verified end-to-end through proxy→record→replay→finding.
 
 ### Scope matching
 Case-insensitive, two-pass percent-decoded, traversal-resolved, matrix-parameter-stripped, trailing-slash-boundary-guarded. Eight bypass vectors tested; all blocked. SSRF blocked by design.

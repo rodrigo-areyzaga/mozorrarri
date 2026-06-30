@@ -1,9 +1,9 @@
 {
-  "name": "accguard",
+  "name": "mozorrarri",
   "version": "0.10.1",
   "description": "Authorization regression testing from real authenticated traffic",
   "main": "src/cli.js",
-  "bin": { "accguard": "src/cli.js" },
+  "bin": { "mozorrarri": "src/cli.js" },
   "scripts": {
     "start": "node src/cli.js",
     "test":  "node test/run.js",

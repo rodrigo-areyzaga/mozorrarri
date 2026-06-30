@@ -2,7 +2,7 @@
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ShopLab — deliberately vulnerable e-commerce API + UI
-// For use with accguard security testing ONLY.
+// For use with mozorrarri security testing ONLY.
 // DO NOT deploy to any public server.
 //
 // Four deliberate IDOR vulnerabilities — no ownership checks on:
@@ -163,7 +163,7 @@ const FRONTEND = `<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>ShopLab — accguard demo</title>
+<title>ShopLab — mozorrarri demo</title>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@300;400;500&display=swap');
 :root{--bg:#0a0a0a;--s:#111;--b:#1e1e1e;--accent:#e8ff47;--text:#e0e0e0;--muted:#555;--red:#ff4f4f;--green:#4fff8a;--blue:#47aaff}
@@ -201,7 +201,7 @@ aside{border-left:1px solid var(--b);padding:16px;overflow-y:auto}
 </head>
 <body>
 <header>
-  <div class="logo">ShopLab <span>// accguard demo &nbsp;·&nbsp; 4 hidden IDOR vulnerabilities</span></div>
+  <div class="logo">ShopLab <span>// mozorrarri demo &nbsp;·&nbsp; 4 hidden IDOR vulnerabilities</span></div>
   <div id="who">not logged in</div>
 </header>
 <div class="layout">
@@ -297,14 +297,14 @@ if (require.main === module) {
   server.listen(PORT, '127.0.0.1', () => {
     console.log(`
 ╔══════════════════════════════════════════════╗
-║  ShopLab — accguard demo target              ║
+║  ShopLab — mozorrarri demo target              ║
 ║  http://127.0.0.1:${PORT}                       ║
 ╠══════════════════════════════════════════════╣
 ║  Alice  tok-alice   alice@shoplab.dev        ║
 ║  Bob    tok-bob     bob@shoplab.dev          ║
 ╠══════════════════════════════════════════════╣
 ║  4 deliberate IDOR vulnerabilities inside    ║
-║  Run accguard to find them                   ║
+║  Run mozorrarri to find them                   ║
 ╚══════════════════════════════════════════════╝
     `);
   });

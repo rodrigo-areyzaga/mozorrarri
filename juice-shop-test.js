@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 'use strict';
 
-// Juice Shop test script for accguard
+// Juice Shop test script for mozorrarri
 // Creates Alice and Bob, logs both in, then makes authenticated GET requests
-// as Alice through the accguard proxy. accguard replays with Bob's token.
+// as Alice through the mozorrarri proxy. mozorrarri replays with Bob's token.
 //
-// This script is designed to run via: accguard run -- node juice-shop-test.js
+// This script is designed to run via: mozorrarri run -- node juice-shop-test.js
 // The proxy URL comes from HTTP_PROXY (set automatically by the wrapper).
 
 const http = require('http');
@@ -13,8 +13,8 @@ const http = require('http');
 const TARGET   = 'http://localhost:3000';
 const PROXY    = process.env.HTTP_PROXY || process.env.http_proxy || 'http://127.0.0.1:8877';
 
-const ALICE = { email: 'alice-accguard@test.com', password: 'Alice1234!', securityAnswer: 'green' };
-const BOB   = { email: 'bob-accguard@test.com',   password: 'Bob1234!',   securityAnswer: 'blue'  };
+const ALICE = { email: 'alice-mozorrarri@test.com', password: 'Alice1234!', securityAnswer: 'green' };
+const BOB   = { email: 'bob-mozorrarri@test.com',   password: 'Bob1234!',   securityAnswer: 'blue'  };
 
 // ── HTTP helpers ─────────────────────────────────────────────────────────────
 
@@ -53,7 +53,7 @@ async function directPost(path, data) {
   });
 }
 
-// Send through accguard proxy — for authenticated GET requests
+// Send through mozorrarri proxy — for authenticated GET requests
 async function proxiedGet(path, token) {
   const proxyUrl = new URL(PROXY);
   return new Promise((resolve, reject) => {
@@ -121,7 +121,7 @@ async function loginUser(user) {
 // ── Main ─────────────────────────────────────────────────────────────────────
 
 async function main() {
-  console.log('\n  Juice Shop accguard test');
+  console.log('\n  Juice Shop mozorrarri test');
   console.log('  ' + '─'.repeat(44));
   console.log(`  Target : ${TARGET}`);
   console.log(`  Proxy  : ${PROXY}`);
@@ -175,9 +175,9 @@ async function main() {
     }
   }
 
-  // Step 4: Done — accguard wrapper will trigger replay automatically
+  // Step 4: Done — mozorrarri wrapper will trigger replay automatically
   console.log('\n  [4/4] Test requests complete.');
-  console.log('  accguard will now replay these as Bob and compare responses.\n');
+  console.log('  mozorrarri will now replay these as Bob and compare responses.\n');
 }
 
 main().catch(err => {
