@@ -7,12 +7,19 @@ const dns = require('dns').promises;
 // so that non-standard representations (decimal, hex, octal) are caught.
 const PRIVATE_RANGES = [
   /^127\./,                          // loopback
+  /^0\.0\.0\.0$/,                    // unspecified address
   /^10\./,                           // RFC 1918 class A
   /^172\.(1[6-9]|2\d|3[01])\./,     // RFC 1918 class B
   /^192\.168\./,                     // RFC 1918 class C
+  /^169\.254\./,                     // link-local (AWS metadata: 169.254.169.254)
+  /^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./,  // CGNAT (RFC 6598)
   /^::1$/,                           // IPv6 loopback
   /^f[cd][0-9a-f]{2}:/i,             // IPv6 unique local (fc00::/7 — covers fc and fd ranges)
   /^fe80:/i,                         // IPv6 link-local
+  // IPv4-mapped IPv6 — ::ffff:x.x.x.x and ::ffff:hex:hex forms
+  // These are private/loopback if the mapped IPv4 address is private.
+  /^::ffff:(127\.|10\.|192\.168\.|169\.254\.|172\.(1[6-9]|2\d|3[01])\.)/i,
+  /^::ffff:(7f00|0a00|a9fe|ac1[0-9a-f]|ac[2-3][0-9a-f]|c0a8):/i,
 ];
 
 // Normalize an IPv4 address that may be in decimal, hex, or octal notation

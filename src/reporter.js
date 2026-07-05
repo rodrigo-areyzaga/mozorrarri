@@ -3,10 +3,6 @@
 const fs = require('fs');
 
 // ── Why-flagged explanation ───────────────────────────────────────────────────
-// Pure function: given a finding, returns the bullet lines explaining why it was
-// flagged. Branches on matchType AND the actual evidence hash prefix so the
-// wording always matches the proof artifact (e.g. big-int JSON matched via raw
-// bytes must not claim "JSON normalisation"). Exported for testing.
 
 function whyFlagged(f) {
   const lines = ['Same endpoint replayed under a different authenticated user'];
@@ -43,12 +39,72 @@ function coverageSummary(store) {
 
   const mechanisms = [...new Set(entries.map(e => e.tokenType).filter(Boolean))];
 
+  // Not-replayed entries: observed and in-scope, but filtered out of replay
+  // Order matters: check method first, then resource ID, then dedup.
+  // A POST with no resource ID should be method_filtered, not no_resource_id.
+  const notReplayed = entries
+    .filter(e => !replayable.includes(e))
+    .map(e => {
+      let reason;
+      if (!['GET'].includes(e.method)) {
+        reason = 'method_filtered';
+      } else if (!e.resourceIds || e.resourceIds.length === 0) {
+        reason = 'no_resource_id';
+      } else {
+        reason = 'deduplicated';
+      }
+      return {
+        method:  e.method,
+        path:    e.path,
+        reason,
+      };
+    })
+    // Deduplicate by method+path+reason
+    .filter((e, i, arr) =>
+      arr.findIndex(x => x.method === e.method && x.path === e.path && x.reason === e.reason) === i
+    );
+
   return {
     observed:   store.size(),
     replayed:   replayable.length,
     patterns:   patterns.size,
     mechanisms: mechanisms.length > 0 ? mechanisms.join(', ') : 'none',
+    notReplayed,
   };
+}
+
+// ── Plain-language summary ────────────────────────────────────────────────────
+// One paragraph a non-engineer can read and forward. Tells you what was tested,
+// what was found, and why some requests were not tested.
+
+function buildPlainSummary(cov, bolaCount, misauthCount) {
+  const observed   = cov.observed;
+  const replayed   = cov.replayed;
+  const notRep     = cov.notReplayed.length;
+  const noId       = cov.notReplayed.filter(e => e.reason === 'no_resource_id').length;
+  const methodFilt = cov.notReplayed.filter(e => e.reason === 'method_filtered').length;
+  const deduped    = cov.notReplayed.filter(e => e.reason === 'deduplicated').length;
+
+  let what;
+  if (bolaCount === 0 && misauthCount === 0) {
+    what = `No authorization boundary failures were detected in the replayed traffic.`;
+  } else {
+    const parts = [];
+    if (bolaCount > 0) parts.push(`${bolaCount} confirmed authorization boundary failure${bolaCount !== 1 ? 's' : ''}`);
+    if (misauthCount > 0) parts.push(`${misauthCount} possible missing-authentication issue${misauthCount !== 1 ? 's' : ''}`);
+    what = `${parts.join(' and ')} ${bolaCount + misauthCount === 1 ? 'was' : 'were'} detected.`;
+  }
+
+  const notRepParts = [];
+  if (noId > 0)       notRepParts.push(`${noId} lacked a URL-level resource identifier`);
+  if (methodFilt > 0) notRepParts.push(`${methodFilt} used a non-GET method (out of scope by design)`);
+  if (deduped > 0)    notRepParts.push(`${deduped} were deduplicated`);
+
+  const notRepStr = notRep > 0
+    ? ` ${notRep} observed request${notRep !== 1 ? 's' : ''} ${notRep === 1 ? 'was' : 'were'} not replayed: ${notRepParts.join('; ')}.`
+    : '';
+
+  return `mozorrarri observed ${observed} authenticated request${observed !== 1 ? 's' : ''} and replayed ${replayed} URL-identified resource candidate${replayed !== 1 ? 's' : ''} as a second authenticated user. ${what}${notRepStr} A clean result means this specific failure mode was not observed in the traffic mozorrarri saw — it does not prove the API has no authorization bugs.`;
 }
 
 // ── Print findings ────────────────────────────────────────────────────────────
@@ -57,9 +113,6 @@ function printFindings(findings, store) {
   const divider = '─'.repeat(64);
   const cov     = coverageSummary(store);
 
-  // Separate by type for clear output.
-  // needs-review is now its own type (not broken-access-control) so it doesn't
-  // inflate the BOLA count or appear in the HIGH severity findings section.
   const bola    = findings.filter(f => f.type === 'broken-access-control');
   const misauth = findings.filter(f => f.type === 'possible-missing-authentication');
   const review  = findings.filter(f => f.type === 'needs-review');
@@ -69,6 +122,7 @@ function printFindings(findings, store) {
   console.log(divider);
   console.log(`  Requests observed    : ${cov.observed}`);
   console.log(`  Replay candidates    : ${cov.replayed}`);
+  console.log(`  Not replayed         : ${cov.notReplayed.length}`);
   console.log(`  Resource patterns    : ${cov.patterns}`);
   console.log(`  Auth mechanisms      : ${cov.mechanisms}`);
   console.log(`  Findings             : ${bola.length}`);
@@ -79,11 +133,21 @@ function printFindings(findings, store) {
   if (findings.length === 0) {
     console.log('\n  ✓  No authorization regressions detected.');
     console.log(`\n     ${cov.replayed} replay candidates checked across ${cov.patterns} unique`);
-    console.log(`     resource patterns. No unauthorized data replays found.\n`);
+    console.log(`     resource patterns. No unauthorized data replays found.`);
+    if (cov.notReplayed.length > 0) {
+      console.log(`\n     ${cov.notReplayed.length} observed request${cov.notReplayed.length !== 1 ? 's' : ''} not replayed:`);
+      const noId  = cov.notReplayed.filter(e => e.reason === 'no_resource_id').length;
+      const meth  = cov.notReplayed.filter(e => e.reason === 'method_filtered').length;
+      const dedup = cov.notReplayed.filter(e => e.reason === 'deduplicated').length;
+      if (noId  > 0) console.log(`       · ${noId} had no URL-level resource identifier`);
+      if (meth  > 0) console.log(`       · ${meth} used a non-GET method (out of scope by design)`);
+      if (dedup > 0) console.log(`       · ${dedup} were deduplicated`);
+    }
+    console.log('');
     return;
   }
 
-  // BOLA findings — confirmed unauthorized data replay
+  // BOLA findings
   bola.forEach((f, i) => {
     const confidence = f.confidence === 'confirmed'
       ? '✓ confirmed unauthorized data replay'
@@ -102,7 +166,6 @@ function printFindings(findings, store) {
       console.log(`        · ${line}`);
     }
 
-    // Exposure Summary — derived metadata, no raw values
     if (f.exposureSummary) {
       const es = f.exposureSummary;
       if (es.skipped) {
@@ -139,7 +202,7 @@ function printFindings(findings, store) {
     console.log(`      ${f.curl}`);
   });
 
-  // Missing authentication findings — reclassified from BOLA by anon probe
+  // Missing authentication findings
   if (misauth.length > 0) {
     console.log('\n' + divider);
     console.log('\n  [!] POSSIBLE MISSING AUTHENTICATION\n');
@@ -147,7 +210,6 @@ function printFindings(findings, store) {
     console.log('      request AND to user B. This may indicate:');
     console.log('        · Intentionally public data (verify and add to exclude list)');
     console.log('        · Missing authentication enforcement (critical — fix immediately)\n');
-
     misauth.forEach((f, i) => {
       console.log(`  [!${i + 1}] CRITICAL — ${f.method} ${f.path}`);
       console.log(`       Resource IDs : ${f.resourceIds.map(r => r.value).join(', ')}`);
@@ -155,14 +217,13 @@ function printFindings(findings, store) {
     });
   }
 
-  // Needs-review findings — trivial payload hash match
+  // Needs-review findings
   if (review.length > 0) {
     console.log(divider);
     console.log('\n  [~] NEEDS REVIEW — trivial payload\n');
     console.log('      These endpoints returned identical trivial responses ([], {}, null)');
     console.log('      to both users. Hash matched but no per-user data was detected.');
     console.log('      Likely false positive — verify manually.\n');
-
     review.forEach((f, i) => {
       console.log(`  [~${i + 1}] ${f.method} ${f.path}`);
       console.log(`       Reproduce : ${f.curl}\n`);
@@ -179,33 +240,60 @@ function printFindings(findings, store) {
 
 // ── Save report ───────────────────────────────────────────────────────────────
 
-function saveReport(findings, store, outputPath) {
-  const cov = coverageSummary(store);
+function saveReport(findings, store, outputPath, runContext = {}) {
+  const cov     = coverageSummary(store);
+  const bolaCount    = findings.filter(f => f.type === 'broken-access-control').length;
+  const misauthCount = findings.filter(f => f.type === 'possible-missing-authentication').length;
+
   const report = {
     version:     '0.10.1',
     generatedAt: new Date().toISOString(),
     reportType:  'authorization-regression-evidence',
+
+    // Plain-language summary — readable without engineering context
+    summary: {
+      plain: buildPlainSummary(cov, bolaCount, misauthCount),
+      observed:         cov.observed,
+      replayCandidates: cov.replayed,
+      notReplayed:      cov.notReplayed.length,
+      resourcePatterns: cov.patterns,
+      authMechanisms:   cov.mechanisms,
+      findings:         bolaCount,
+      missingAuth:      misauthCount,
+      needsReview:      findings.filter(f => f.type === 'needs-review').length,
+    },
+
+    // What was tested — answers "what exactly did you test?"
+    runContext: {
+      target:       runContext.target      || null,
+      scope:        runContext.scope       || null,
+      exclude:      runContext.exclude     || null,
+      command:      runContext.command     || null,
+      environment:  runContext.environment || null,
+      principalPair: {
+        userA: runContext.userALabel || 'primary-test-user',
+        userB: runContext.userBLabel || 'secondary-test-user',
+      },
+      // Note: tokens are never stored — only labels
+    },
+
     privacy: {
       rawTokensStored: false,
       rawBodiesStored: false,
       rawValuesStored: false,
     },
+
     integrity: {
-      reportSchema:        'mozorrarri-report-v1',
-      generatedBy:         'mozorrarri 0.10.1',
-      detectionPrimitive:  'cross-user replay hash match',
-      bodyRetentionPolicy: 'not-stored',
+      reportSchema:         'mozorrarri-report-v1',
+      generatedBy:          'mozorrarri 0.10.1',
+      detectionPrimitive:   'cross-user replay hash match',
+      bodyRetentionPolicy:  'not-stored',
       tokenRetentionPolicy: 'fingerprint-only',
     },
-    summary: {
-      observed:         cov.observed,
-      replayCandidates: cov.replayed,
-      resourcePatterns: cov.patterns,
-      authMechanisms:   cov.mechanisms,
-      findings:         findings.filter(f => f.type === 'broken-access-control').length,
-      missingAuth:      findings.filter(f => f.type === 'possible-missing-authentication').length,
-      needsReview:      findings.filter(f => f.confidence === 'needs-review').length,
-    },
+
+    // Not-replayed breakdown — makes clean runs commercially meaningful
+    notReplayed: cov.notReplayed,
+
     findings,
   };
 
@@ -218,4 +306,4 @@ function saveReport(findings, store, outputPath) {
   }
 }
 
-module.exports = { printFindings, saveReport, coverageSummary, whyFlagged };
+module.exports = { printFindings, saveReport, coverageSummary, whyFlagged, buildPlainSummary };

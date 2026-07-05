@@ -588,6 +588,57 @@ const nfd = Buffer.from(JSON.stringify({ name: 'Cafe\u0301' }));         // NFD:
 assert(contentHash(nfc, 'application/json') === contentHash(nfd, 'application/json'),
   'U1: NFC and NFD representations of same string hash identically');
 
+// ── reporter.js — notReplayed, runContext, plain summary ─────────────────────
+section('reporter.js — notReplayed, runContext, plain summary');
+
+const { buildPlainSummary, coverageSummary: covSum } = require(root + '/src/reporter');
+
+// buildPlainSummary — clean run
+const cleanSummary = buildPlainSummary(
+  { observed: 8, replayed: 3, patterns: 1, mechanisms: 'bearer',
+    notReplayed: [
+      { method: 'GET', path: '/api/BasketItems/', reason: 'no_resource_id' },
+      { method: 'GET', path: '/rest/user/whoami', reason: 'no_resource_id' },
+    ]
+  }, 0, 0
+);
+assert(cleanSummary.includes('8 authenticated requests'), 'plain summary includes observed count');
+assert(cleanSummary.includes('3 URL-identified'), 'plain summary includes replayed count');
+assert(cleanSummary.includes('No authorization boundary failures'), 'plain summary clean run wording');
+assert(cleanSummary.includes('2 observed requests were not replayed'), 'plain summary includes not-replayed count');
+assert(cleanSummary.includes('no_resource_id') === false, 'plain summary does not expose internal reason codes');
+assert(cleanSummary.includes('lacked a URL-level resource identifier'), 'plain summary humanizes reason');
+assert(cleanSummary.includes('does not prove the API has no authorization bugs'), 'plain summary includes scope caveat');
+
+// buildPlainSummary — with findings
+const findingSummary = buildPlainSummary(
+  { observed: 8, replayed: 3, patterns: 1, mechanisms: 'bearer', notReplayed: [] },
+  3, 0
+);
+assert(findingSummary.includes('3 confirmed authorization boundary failures'), 'plain summary with findings');
+
+// notReplayed section in saveReport output
+const { saveReport: sr } = require(root + '/src/reporter');
+const { SessionStore: SStore } = require(root + '/src/session-store');
+const tmpStore = new SStore();
+// Record one replayable entry and one no-id entry
+tmpStore.record({ method: 'GET', url: '/api/orders/1001',
+  headers: { authorization: 'Bearer tok-a' }, statusCode: 200, contentLength: 50,
+  contentHash: 'json:abc', rawHash: 'raw:xyz' });
+tmpStore.record({ method: 'GET', url: '/api/whoami',
+  headers: { authorization: 'Bearer tok-a' }, statusCode: 200, contentLength: 20,
+  contentHash: 'json:def', rawHash: 'raw:uvw' });
+const tmpOut = '/tmp/mozorrarri-test-report.json';
+sr([], tmpStore, tmpOut, { target: 'http://localhost:3000', scope: ['/api/'], exclude: [], command: 'npm test' });
+const saved = JSON.parse(require('fs').readFileSync(tmpOut, 'utf8'));
+assert(saved.summary.plain,                  'report has plain summary');
+assert(saved.runContext.target === 'http://localhost:3000', 'runContext.target present');
+assert(saved.runContext.command === 'npm test',             'runContext.command present');
+assert(saved.runContext.principalPair.userA,                'runContext.principalPair.userA present');
+assert(Array.isArray(saved.notReplayed),                    'notReplayed array in report');
+assert(saved.notReplayed.some(e => e.reason === 'no_resource_id'), 'notReplayed includes no_resource_id entry');
+assert(!JSON.stringify(saved).includes('tok-a'), 'report does not contain raw token');
+
 // ── reporter.js — coverage summary
 // ── reporter.js — coverage summary ───────────────────────────────────────────
 section('reporter.js — coverage summary');
@@ -837,7 +888,7 @@ const {
 {
   const body = Buffer.from('<html>test</html>');
   const result = buildExposureSummary(body, 'text/html', 'raw:test');
-  assert(result === null, 'returns null for non-JSON content type');
+  assert(result !== null && result.skipped === true, 'returns skipped object for non-JSON content type');
 }
 
 // 11. Returns null for invalid JSON
@@ -973,13 +1024,13 @@ const {
 // 21. Returns null for empty body
 {
   const result = buildExposureSummary(Buffer.from(''), 'application/json', 'json:test');
-  assert(result === null, 'returns null for empty body');
+  assert(result !== null && result.skipped === true, 'returns skipped object for empty body');
 }
 
 // 22. Returns null for null body
 {
   const result = buildExposureSummary(null, 'application/json', 'json:test');
-  assert(result === null, 'returns null for null body');
+  assert(result !== null && result.skipped === true, 'returns skipped object for null body');
 }
 
 // 23. Returns null for JSON null value
@@ -1074,7 +1125,7 @@ section('exposure-summary.js — adversarial');
 {
   const body = Buffer.from(JSON.stringify({ id: 1, secret: 'leaked' }));
   const result = buildExposureSummary(body, 'text/plain', 'raw:abc');
-  assert(result === null, 'text/plain returns null even with JSON bytes');
+  assert(result !== null && result.skipped === true && result.reason === 'non-json-content-type', 'text/plain returns skipped object even with JSON bytes');
 }
 
 // 29. Ambiguous classification: "state" matches possible_location
@@ -1906,9 +1957,9 @@ async function runIntegration() {
   assert(docFinding.matchType === 'raw-hash-fallback', 'cross-family matchType is raw-hash-fallback');
   assert(docFinding.evidence.matchedHash.startsWith('raw:'), 'cross-family evidence hash is raw:');
   assert(docFinding.evidence.matchType === 'raw-hash-fallback', 'evidence matchType is raw-hash-fallback');
-  // Cross-family confirmed BOLA with text/plain → no exposureSummary (correct: non-JSON)
-  assert(!docFinding.exposureSummary,
-    'GATE: non-JSON confirmed BOLA has NO exposureSummary');
+  // Cross-family confirmed BOLA with text/plain → exposureSummary is skipped (non-JSON)
+  assert(docFinding.exposureSummary && docFinding.exposureSummary.skipped === true,
+    'GATE: non-JSON confirmed BOLA has skipped exposureSummary');
 
   // ── Auth-mechanism coverage ───────────────────────────────────────────────
   section('integration — auth mechanism coverage');
@@ -1986,7 +2037,7 @@ async function runIntegration() {
   // equal the finding's evidence.matchedHash. They must never drift.
   let checkedSummaries = 0;
   for (const f of findings) {
-    if (f.exposureSummary) {
+    if (f.exposureSummary && !f.exposureSummary.skipped) {
       assert(f.exposureSummary.summaryGeneratedFromHash === f.evidence.matchedHash,
         `${f.path}: exposureSummary hash === evidence.matchedHash`);
       checkedSummaries++;

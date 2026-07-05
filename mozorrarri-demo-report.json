@@ -1,7 +1,29 @@
 {
   "version": "0.10.1",
-  "generatedAt": "2026-06-13T19:25:16.548Z",
+  "generatedAt": "2026-06-30T21:53:19.829Z",
   "reportType": "authorization-regression-evidence",
+  "summary": {
+    "plain": "mozorrarri observed 9 authenticated requests and replayed 5 URL-identified resource candidates as a second authenticated user. 5 confirmed authorization boundary failures were detected. 4 observed requests were not replayed: 4 lacked a URL-level resource identifier. A clean result means this specific failure mode was not observed in the traffic mozorrarri saw — it does not prove the API has no authorization bugs.",
+    "observed": 9,
+    "replayCandidates": 5,
+    "notReplayed": 4,
+    "resourcePatterns": 4,
+    "authMechanisms": "bearer",
+    "findings": 5,
+    "missingAuth": 0,
+    "needsReview": 0
+  },
+  "runContext": {
+    "target": null,
+    "scope": null,
+    "exclude": null,
+    "command": null,
+    "environment": null,
+    "principalPair": {
+      "userA": "primary-test-user",
+      "userB": "secondary-test-user"
+    }
+  },
   "privacy": {
     "rawTokensStored": false,
     "rawBodiesStored": false,
@@ -14,18 +36,31 @@
     "bodyRetentionPolicy": "not-stored",
     "tokenRetentionPolicy": "fingerprint-only"
   },
-  "summary": {
-    "observed": 9,
-    "replayCandidates": 5,
-    "resourcePatterns": 4,
-    "authMechanisms": "bearer",
-    "findings": 5,
-    "missingAuth": 0,
-    "needsReview": 0
-  },
+  "notReplayed": [
+    {
+      "method": "GET",
+      "path": "/api/me",
+      "reason": "no_resource_id"
+    },
+    {
+      "method": "GET",
+      "path": "/api/orders",
+      "reason": "no_resource_id"
+    },
+    {
+      "method": "GET",
+      "path": "/api/payment",
+      "reason": "no_resource_id"
+    },
+    {
+      "method": "GET",
+      "path": "/api/documents",
+      "reason": "no_resource_id"
+    }
+  ],
   "findings": [
     {
-      "findingId": "AG-20260613T192516Z-001",
+      "findingId": "AG-20260630T215319Z-001",
       "severity": "high",
       "type": "broken-access-control",
       "confidence": "confirmed",
@@ -58,8 +93,8 @@
         "authMechanism": "bearer",
         "userAgentPreserved": false
       },
-      "recordedAt": 1781378716502,
-      "replayedAt": "2026-06-13T19:25:16.531Z",
+      "recordedAt": 1782856399794,
+      "replayedAt": "2026-06-30T21:53:19.817Z",
       "curl": "curl -s -H 'Authorization: Bearer '$TOKEN_B 'http://127.0.0.1:3100/api/users/user-alice'",
       "exposureSummary": {
         "summaryGeneratedFromHash": "json:54a38c2940e8b1ef24d0280b56e171e491c21e3c0cee8087758f148b975f311d",
@@ -101,7 +136,7 @@
       }
     },
     {
-      "findingId": "AG-20260613T192516Z-002",
+      "findingId": "AG-20260630T215319Z-002",
       "severity": "high",
       "type": "broken-access-control",
       "confidence": "confirmed",
@@ -134,8 +169,8 @@
         "authMechanism": "bearer",
         "userAgentPreserved": false
       },
-      "recordedAt": 1781378716508,
-      "replayedAt": "2026-06-13T19:25:16.533Z",
+      "recordedAt": 1782856399799,
+      "replayedAt": "2026-06-30T21:53:19.819Z",
       "curl": "curl -s -H 'Authorization: Bearer '$TOKEN_B 'http://127.0.0.1:3100/api/orders/ord-1001'",
       "exposureSummary": {
         "summaryGeneratedFromHash": "json:2c913a034728f094ab7f6633d7037d266f8baf3caa8b06f7c1e1b13b067f85af",
@@ -172,7 +207,7 @@
       }
     },
     {
-      "findingId": "AG-20260613T192516Z-003",
+      "findingId": "AG-20260630T215319Z-003",
       "severity": "high",
       "type": "broken-access-control",
       "confidence": "confirmed",
@@ -205,8 +240,8 @@
         "authMechanism": "bearer",
         "userAgentPreserved": false
       },
-      "recordedAt": 1781378716511,
-      "replayedAt": "2026-06-13T19:25:16.537Z",
+      "recordedAt": 1782856399802,
+      "replayedAt": "2026-06-30T21:53:19.821Z",
       "curl": "curl -s -H 'Authorization: Bearer '$TOKEN_B 'http://127.0.0.1:3100/api/orders/ord-1002'",
       "exposureSummary": {
         "summaryGeneratedFromHash": "json:9895cec2aead9eac9b7d5d96ef9457d5eeca5c379733775e7bbd191c30754142",
@@ -243,7 +278,7 @@
       }
     },
     {
-      "findingId": "AG-20260613T192516Z-004",
+      "findingId": "AG-20260630T215319Z-004",
       "severity": "high",
       "type": "broken-access-control",
       "confidence": "confirmed",
@@ -276,8 +311,8 @@
         "authMechanism": "bearer",
         "userAgentPreserved": false
       },
-      "recordedAt": 1781378716518,
-      "replayedAt": "2026-06-13T19:25:16.539Z",
+      "recordedAt": 1782856399806,
+      "replayedAt": "2026-06-30T21:53:19.823Z",
       "curl": "curl -s -H 'Authorization: Bearer '$TOKEN_B 'http://127.0.0.1:3100/api/payment/pay-1'",
       "exposureSummary": {
         "summaryGeneratedFromHash": "json:02c1b9ca8f76fd38cd4a90dab50f4c48075682214dcfdd63aff04737d9220728",
@@ -308,7 +343,7 @@
       }
     },
     {
-      "findingId": "AG-20260613T192516Z-005",
+      "findingId": "AG-20260630T215319Z-005",
       "severity": "high",
       "type": "broken-access-control",
       "confidence": "confirmed",
@@ -341,8 +376,8 @@
         "authMechanism": "bearer",
         "userAgentPreserved": false
       },
-      "recordedAt": 1781378716522,
-      "replayedAt": "2026-06-13T19:25:16.546Z",
+      "recordedAt": 1782856399810,
+      "replayedAt": "2026-06-30T21:53:19.824Z",
       "curl": "curl -s -H 'Authorization: Bearer '$TOKEN_B 'http://127.0.0.1:3100/api/documents/doc-101'",
       "exposureSummary": {
         "summaryGeneratedFromHash": "json:9c0d301257b47270ed08cb5ddfc93da43b99c268c45253c8601c3d663f75ca2a",

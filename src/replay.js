@@ -59,18 +59,134 @@ function sortKeys(val) {
   return val;
 }
 
-// Detect integer literals in JSON that exceed Number.MAX_SAFE_INTEGER.
-// JSON.parse silently rounds these — distinct IDs collide into one hash.
-// We scan the raw string before parsing; if found, fall back to raw-byte hash
-// so precision is preserved at the byte level.
-const BIG_INT_RE = /(?<!["\w])([0-9]{16,})(?![\w"])/g;
-
+// Scans raw JSON for number literals whose mathematical integer value exceeds
+// Number.MAX_SAFE_INTEGER (2^53-1 = 9007199254740991).
+//
+// The key insight: JSON.parse() loses precision on *any* number whose integer
+// value exceeds MAX_SAFE, regardless of notation:
+//   9007199254740993     → rounds (plain integer)
+//   9007199254740993.0   → rounds (decimal that is mathematically an integer)
+//   9.007199254740993e15 → rounds (exponent form)
+//   0.9007199254740993   → safe  (float mantissa, magnitude < 1)
+//   1.234e5              → safe  (= 123400, well within safe range)
+//
+// Strategy: parse each complete JSON number, compute its magnitude, flag it
+// if the integer component exceeds MAX_SAFE. Skip quoted strings entirely.
 function hasBigInts(str) {
-  BIG_INT_RE.lastIndex = 0;
-  let m;
-  while ((m = BIG_INT_RE.exec(str)) !== null) {
-    if (m[1].length > 16) return true; // 17+ digits always exceed MAX_SAFE
-    if (BigInt(m[1]) > BigInt(Number.MAX_SAFE_INTEGER)) return true;
+  let i = 0;
+  const len = str.length;
+  const MAX_SAFE = BigInt(Number.MAX_SAFE_INTEGER);
+
+  while (i < len) {
+    const ch = str[i];
+
+    // Skip quoted strings — digit sequences inside strings are not numeric literals
+    if (ch === '"') {
+      i++;
+      while (i < len) {
+        if (str[i] === '\\') { i += 2; continue; } // skip escape + next char
+        if (str[i] === '"') { i++; break; }
+        i++;
+      }
+      continue;
+    }
+
+    // Number start: optional '-', then digit
+    if (ch === '-' || (ch >= '0' && ch <= '9')) {
+      const start = i;
+      if (str[i] === '-') i++;
+
+      // Collect integer digits
+      const intStart = i;
+      while (i < len && str[i] >= '0' && str[i] <= '9') i++;
+      const intDigits = str.slice(intStart, i);
+
+      // Collect optional fractional part
+      let fracDigits = '';
+      if (i < len && str[i] === '.') {
+        i++; // skip '.'
+        const fracStart = i;
+        while (i < len && str[i] >= '0' && str[i] <= '9') i++;
+        fracDigits = str.slice(fracStart, i);
+      }
+
+      // Collect optional exponent
+      let expSign = 1;
+      let expVal  = 0;
+      if (i < len && (str[i] === 'e' || str[i] === 'E')) {
+        i++;
+        if (i < len && str[i] === '+') i++;
+        else if (i < len && str[i] === '-') { expSign = -1; i++; }
+        const expStart = i;
+        while (i < len && str[i] >= '0' && str[i] <= '9') i++;
+        expVal = parseInt(str.slice(expStart, i), 10) || 0;
+      }
+
+      // Now decide: does this number's mathematical value exceed MAX_SAFE?
+      // We work with digit counts and magnitude first to avoid expensive BigInt ops.
+      try {
+        const allDigits = intDigits + fracDigits;
+        const fracLen   = fracDigits.length;
+        const netExp    = expSign * expVal - fracLen;
+
+        if (allDigits === '' || allDigits === '0') continue;
+
+        const sigDigits = allDigits.replace(/^0+/, '').length;
+
+        // Safety cap: obviously > MAX_SAFE (≈ 9×10^15, 16 digits).
+        if (netExp > 20) return true;
+
+        // Huge negative exponent — only safe if the significant digit count
+        // is also small. e.g. 999...999e-900 with 1000 sig digits still has
+        // a ~100-digit integer part. Guard: if sigDigits + netExp > 16, unsafe.
+        if (netExp < -400) {
+          if (sigDigits + netExp > 16) return true;
+          continue;
+        }
+
+        // Quick safe check: clearly tiny magnitude.
+        if (sigDigits <= 15 && netExp <= 0) continue;
+
+        const bigDigits = BigInt(allDigits);
+
+        let intValue;
+        if (netExp >= 0) {
+          intValue = bigDigits * (10n ** BigInt(netExp));
+        } else {
+          const divisor = 10n ** BigInt(-netExp);
+          intValue = bigDigits / divisor;
+        }
+
+        // Strict greater-than: MAX_SAFE itself is exactly representable.
+        // For decimals like 9007199254740991.9: intValue === MAX_SAFE but the
+        // mathematical value is above it and rounds up. Detect this by checking
+        // whether the fractional part is meaningfully non-zero (not just trailing zeros)
+        // AND the rounded value would exceed MAX_SAFE.
+        // Key: 9.007199254740991e15 written in scientific notation has fracDigits
+        // '007199254740991' but its mathematical value is exactly MAX_SAFE — safe.
+        // We must check whether the NUMBER (not its source text) exceeds MAX_SAFE.
+        if (intValue > MAX_SAFE) return true;
+
+        // Decimal rounding: if intValue === MAX_SAFE and there are fractional digits
+        // that are not all zero, the mathematical value slightly exceeds MAX_SAFE
+        // and JSON.parse will round it to MAX_SAFE + 1.
+        // Exception: scientific notation like 9.007199254740991e15 — the fracDigits
+        // in the source are '007199254740991' but after applying the exponent the
+        // integer and fractional components are exact. We can tell because
+        // netExp shifted the decimal entirely past the fractional part: if fracLen <= expVal
+        // (for positive exponent), all source-text fractional digits became integer digits.
+        if (intValue === MAX_SAFE) {
+          const fracIsActuallyFractional = netExp < 0 ||
+            (expSign > 0 && fracLen > expVal);
+          const hasNonZeroFrac = fracDigits.replace(/0+$/, '') !== '';
+          if (fracIsActuallyFractional && hasNonZeroFrac) return true;
+        }
+      } catch { /* ignore malformed numbers */ }
+
+      continue;
+    }
+
+    i++;
   }
   return false;
 }

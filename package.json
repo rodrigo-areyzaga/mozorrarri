@@ -3,16 +3,30 @@
   "version": "0.10.1",
   "description": "Authorization regression testing from real authenticated traffic",
   "main": "src/cli.js",
-  "bin": { "mozorrarri": "src/cli.js" },
+  "bin": {
+    "mozorrarri": "src/cli.js"
+  },
   "scripts": {
     "start": "node src/cli.js",
-    "test":  "node test/run.js",
-    "demo":  "node demo.js"
+    "test": "node test/run.js",
+    "demo": "node demo.js",
+    "test:adversarial": "node test/adversarial-harness.js",
+    "test:deep": "node test/deep-adversarial-harness.js",
+    "test:all": "node test/run.js && node test/adversarial-harness.js && node test/deep-adversarial-harness.js"
   },
   "keywords": [
-    "authorization", "regression", "testing", "idor",
-    "access-control", "appsec", "proxy", "bola", "security"
+    "authorization",
+    "regression",
+    "testing",
+    "idor",
+    "access-control",
+    "appsec",
+    "proxy",
+    "bola",
+    "security"
   ],
   "license": "MIT",
-  "engines": { "node": ">=18" }
+  "engines": {
+    "node": ">=18"
+  }
 }

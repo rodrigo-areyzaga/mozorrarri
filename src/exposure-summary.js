@@ -208,8 +208,8 @@ function classifyFieldPath(fieldPath) {
 
 function buildExposureSummary(body, contentType, evidenceHash) {
   // Guard: only JSON responses
-  if (!body || body.length === 0) return null;
-  if (!contentType || !/json/i.test(contentType)) return null;
+  if (!body || body.length === 0) return { skipped: true, reason: 'empty-body', fieldPaths: [], classificationSignals: [] };
+  if (!contentType || !/json/i.test(contentType)) return { skipped: true, reason: 'non-json-content-type', fieldPaths: [], classificationSignals: [] };
 
   // Pre-parse body-size ceiling — analysis protection, not network protection.
   // The body is already in memory from replay; this guards against the second

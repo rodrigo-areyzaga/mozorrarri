@@ -1,6 +1,6 @@
 <svg width="100%" viewBox="0 0 680 680" xmlns="http://www.w3.org/2000/svg" role="img">
-  <title>accguard v0.10.1 architecture — authorization regression testing with exposure summary</title>
-  <desc>How accguard sits between your test suite and your app, records authenticated requests, replays them as a second user, enriches confirmed findings with exposure metadata, and reports audit-ready evidence.</desc>
+  <title>mozorrarri v0.10.1 architecture — authorization boundary verification with exposure summary</title>
+  <desc>How mozorrarri sits between your test suite and your app, records authenticated requests, replays them as a second user, enriches confirmed findings with exposure metadata, and reports audit-ready evidence.</desc>
 
   <defs>
     <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">

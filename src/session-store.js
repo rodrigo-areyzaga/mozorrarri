@@ -12,6 +12,20 @@ function fingerprintToken(raw) {
   return crypto.createHash('sha256').update(raw).digest('hex').slice(0, 16);
 }
 
+// Case-insensitive header lookup.
+// Node's http module lowercases headers automatically, but direct calls to
+// extractToken() or record() (tests, fixtures, integrations) may pass mixed-case
+// headers like 'Authorization' or 'User-Agent'. This helper tries the lowercase
+// key first (fast path), then walks all keys once for a case-insensitive fallback.
+function getHeader(headers, name) {
+  const lower = name.toLowerCase();
+  if (headers[lower] !== undefined) return headers[lower];
+  for (const k of Object.keys(headers)) {
+    if (k.toLowerCase() === lower) return headers[k];
+  }
+  return undefined;
+}
+
 // Returns { raw, type, cookieName } or null.
 // type is 'bearer', 'other-auth', or 'cookie' — used by replay to send the
 // second token in the correct format.
@@ -29,9 +43,10 @@ function extractToken(headers) {
   // concatenate duplicate headers into an array.
   // Iterate to find the first non-empty value — a malformed empty first element
   // (e.g. ['', 'Bearer bob-jwt']) would otherwise silently drop the valid token.
-  const authHeader = Array.isArray(headers['authorization'])
-    ? headers['authorization'].find(v => v && v.trim()) || ''
-    : headers['authorization'];
+  const authRaw = getHeader(headers, 'authorization');
+  const authHeader = Array.isArray(authRaw)
+    ? authRaw.find(v => v && v.trim()) || ''
+    : authRaw;
   const auth = authHeader || '';
 
   if (auth.toLowerCase().startsWith('bearer ')) {
@@ -64,14 +79,21 @@ function extractToken(headers) {
   // Configurable via MOZORRARRI_API_KEY_HEADER (default: x-api-key).
   // Guard against array-valued headers — same pattern as Authorization.
   const apiKeyHeader = (process.env.MOZORRARRI_API_KEY_HEADER || 'x-api-key').toLowerCase();
-  const apiKeyRaw = Array.isArray(headers[apiKeyHeader])
-    ? headers[apiKeyHeader].find(v => v && v.trim()) || ''
-    : headers[apiKeyHeader] || '';
-  if (apiKeyRaw.trim()) {
-    return { raw: apiKeyRaw.trim(), type: 'api-key', cookieName: null, apiKeyHeader };
+  const apiKeyRaw = getHeader(headers, apiKeyHeader);
+  const apiKeyVal = Array.isArray(apiKeyRaw)
+    ? apiKeyRaw.find(v => v && v.trim()) || ''
+    : apiKeyRaw || '';
+  if (apiKeyVal.trim()) {
+    return { raw: apiKeyVal.trim(), type: 'api-key', cookieName: null, apiKeyHeader };
   }
 
-  const cookie = headers['cookie'] || '';
+  // Cookie extraction — normalize to string, handle array-valued headers.
+  // Array cookie headers (e.g. ["theme=dark", "session=tok"]) are joined with ';'
+  // so the existing per-cookie parser works without modification.
+  const cookieRaw = getHeader(headers, 'cookie');
+  const cookie = Array.isArray(cookieRaw)
+    ? cookieRaw.join('; ')
+    : cookieRaw || '';
 
   // Cookie name resolution — three levels, first match wins:
   //
@@ -156,7 +178,13 @@ function extractResourceIds(urlPath) {
   }
 
   const segments = parsed.pathname.split('/').filter(Boolean).map(seg => {
-    try { return decodeURIComponent(seg); } catch { return seg; }
+    // Decode percent-encoding
+    let decoded = seg;
+    try { decoded = decodeURIComponent(seg); } catch { /* use raw */ }
+    // Strip matrix parameters — ;jsessionid=abc, ;v=1, etc.
+    // Java/Tomcat/Spring strip these before routing; we must too or
+    // /api/orders/1001;v=1 won't extract the ID 1001.
+    return decoded.replace(/;.*$/, '');
   });
 
   for (let i = 0; i < segments.length; i++) {
@@ -197,13 +225,40 @@ function extractResourceIds(urlPath) {
   }
 
   // Query-string resource IDs — only for id-like parameter names.
-  // ?id=1001 is a resource ID; ?page=2 or ?sort=newest are not.
-  const ID_QUERY_KEYS = /^(id|uuid|_id|user[-_]?id|account[-_]?id|order[-_]?id|transaction[-_]?id|vehicle[-_]?id|customer[-_]?id|payment[-_]?id|document[-_]?id|record[-_]?id)$/i;
+  // Handles multiple common API conventions:
+  //   Simple:    ?id=1001  ?_id=507f...  ?order_id=ord-1001
+  //   Plural:    ?ids[]=1001  ?user_ids=42  ?userIds=42
+  //   Bracket:   ?filter[id]=1001  ?filter[order_id]=ord-1001  ?filter[_id]=507f...
+  //   Comma-sep: ?ids=1001,1002,1003
+  //
+  // NOT treated as IDs: ?page=2, ?limit=10, ?sort=newest, ?format=json
+
+  function isIdLikeKey(key) {
+    // Strip array notation suffix: ids[] → ids
+    const stripped = key.replace(/\[\]$/, '');
+    // Extract the innermost bracket content: filter[order_id] → order_id
+    const bracketMatch = stripped.match(/\[([^\]]+)\]$/);
+    const base = bracketMatch ? bracketMatch[1] : stripped;
+    // Match common ID key names — snake_case, camelCase, singular and plural
+    // Covers: core IDs, user/account/order variants, and multi-tenant context IDs
+    // (tenant, org, project, workspace, team, owner, member, company, group)
+    return /^(ids?|uuid|_id|objectIds?|object_ids?|object[-_]?ids?|mongo[-_]?ids?|user[-_]?ids?|userIds?|account[-_]?ids?|accountIds?|order[-_]?ids?|orderIds?|transaction[-_]?ids?|transactionIds?|vehicle[-_]?ids?|vehicleIds?|customer[-_]?ids?|customerIds?|payment[-_]?ids?|paymentIds?|document[-_]?ids?|documentIds?|record[-_]?ids?|recordIds?|tenant[-_]?ids?|tenantIds?|org[-_]?ids?|orgIds?|organization[-_]?ids?|organizationIds?|workspace[-_]?ids?|workspaceIds?|project[-_]?ids?|projectIds?|team[-_]?ids?|teamIds?|owner[-_]?ids?|ownerIds?|member[-_]?ids?|memberIds?|company[-_]?ids?|companyIds?|group[-_]?ids?|groupIds?)$/i.test(base);
+  }
+
+  function extractQueryValue(value) {
+    // Comma-separated list — extract each value individually
+    const parts = value.includes(',') ? value.split(',').map(v => v.trim()) : [value];
+    for (const v of parts) {
+      if (!v) continue;
+      if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v)) add('uuid', v);
+      else if (/^\d{1,20}$/.test(v)) add('integer', v);
+      else if (/^[0-9a-f]{24}$/i.test(v) && /[a-f]/i.test(v)) add('objectid', v);
+      else if (/^[a-z][a-z0-9]*(-[a-z0-9]+)+$/i.test(v)) add('slug', v);
+    }
+  }
+
   for (const [key, value] of parsed.searchParams.entries()) {
-    if (!ID_QUERY_KEYS.test(key)) continue;
-    if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)) add('uuid', value);
-    else if (/^\d{1,20}$/.test(value)) add('integer', value);
-    else if (/^[a-z][a-z0-9]*(-[a-z0-9]+)+$/i.test(value)) add('slug', value);
+    if (isIdLikeKey(key)) extractQueryValue(value);
   }
 
   return ids;
@@ -250,7 +305,7 @@ class SessionStore {
       tokenType:          tokenInfo.type,
       cookieName:         tokenInfo.cookieName,
       apiKeyHeader:       tokenInfo.apiKeyHeader || null,
-      userAgent:          headers['user-agent'] || null,
+      userAgent:          getHeader(headers, 'user-agent') || null,
       originalAuthScheme: authScheme,
       resourceIds,
       statusCode,

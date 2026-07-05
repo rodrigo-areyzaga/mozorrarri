@@ -1,8 +1,10 @@
 node_modules/
-accguard-report.json
+mozorrarri-report.json
+mozorrarri-juiceshop-report.json
+mozorrarri-vampi-report.json
+mozorrarri-demo-report.json
 shoplab-report.json
-accguard-session.json
-.accguard_consent
+.mozorrarri_consent
 .env
 .env.*
 .DS_Store

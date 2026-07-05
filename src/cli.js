@@ -246,7 +246,15 @@ async function main() {
     }
 
     printFindings(findings, store);
-    if (outputFile) saveReport(findings, store, outputFile);
+    if (outputFile) saveReport(findings, store, outputFile, {
+      target,
+      scope,
+      exclude,
+      command:      args.mode === 'run' ? [args.command, ...args.commandArgs].join(' ') : null,
+      environment:  process.env.NODE_ENV || process.env.ENVIRONMENT || null,
+      userALabel:   process.env.MOZORRARRI_USER_A_LABEL || null,
+      userBLabel:   process.env.MOZORRARRI_USER_B_LABEL || null,
+    });
 
     // Exit-code disambiguation — when the wrapped command also failed, make it
     // explicit in the terminal so CI operators don't miss the auth finding.
