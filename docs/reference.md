@@ -1,6 +1,53 @@
 # jabearri — configuration, token types, and known limitations
 
-This document covers everything you don't need on day one: full config/env reference, supported auth schemes, and known scope limitations worth knowing before you integrate jabearri into a larger or non-standard test setup.
+This document covers everything you don't need on day one: full config/env reference, supported auth schemes, CI recipes beyond wrapper mode, and known scope limitations worth knowing before you integrate jabearri into a larger or non-standard test setup.
+
+---
+
+## CI: manual-flush mode
+
+Wrapper mode (`node src/cli.js run -- <your test command>`) is the recommended CI path — see the main [README](../README.md#ci-integration). Use manual-flush mode only if your app and tests are already orchestrated by other tooling and wrapper mode doesn't fit.
+
+The `/--flush` endpoint responds as soon as it receives the request, then runs replay afterward — so its HTTP status alone does not reflect findings. To fail the job on findings, capture the background process's PID and `wait` on it, which propagates its real exit code. This has to happen within a single CI step: a background process started in one GitHub Actions step is not a child of the shell in a later step, so `wait` on it only works if start, test, and flush all happen together:
+
+```yaml
+- name: Start app
+  run: npm start &
+
+- name: Run tests with jabearri manual flush
+  run: |
+    node src/cli.js &
+    JABEARRI_PID=$!
+
+    set +e
+    HTTP_PROXY=http://127.0.0.1:8877 npm test
+    TEST_EXIT=$?
+
+    curl -s -X POST http://127.0.0.1:8877/--flush
+    wait "$JABEARRI_PID"
+    JABEARRI_EXIT=$?
+
+    if [ "$JABEARRI_EXIT" -ne 0 ]; then
+      exit "$JABEARRI_EXIT"
+    fi
+
+    exit "$TEST_EXIT"
+  env:
+    JABEARRI_TOKEN_B: ${{ secrets.TEST_USER_B_TOKEN }}
+```
+
+`wait "$JABEARRI_PID"` is what actually captures jabearri's real exit code (`0` clean, `1` authorization regressions found, `2` proxy bypass detected), and the script surfaces that ahead of the test suite's own exit code so an authorization finding fails the build even if the tests themselves passed.
+
+To preserve the report as a downloadable CI artifact — including on failed runs:
+
+```yaml
+- name: Save jabearri report
+  uses: actions/upload-artifact@v4
+  with:
+    name: jabearri-report
+    path: jabearri-report.json
+  if: always()
+```
 
 ---
 
