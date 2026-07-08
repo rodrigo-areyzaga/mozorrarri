@@ -335,8 +335,8 @@ function replayRequest({ targetUrl, entry, secondToken }) {
         'accept-encoding': 'identity', // force uncompressed — matches recorded hash
         // Preserve original User-Agent — servers that vary response content by UA
         // (bot detection, content adaptation) would produce different hashes if
-        // we sent jabearri/0.10.1. Use the original UA to maximize replay fidelity.
-        'user-agent':      entry.userAgent || 'jabearri/0.10.1',
+        // we sent jabearri/0.10.2. Use the original UA to maximize replay fidelity.
+        'user-agent':      entry.userAgent || 'jabearri/0.10.2',
         ...authHeaders(secondToken, entry),
       },
     };
@@ -395,7 +395,7 @@ async function runReplay({ store, targetUrl, secondToken, logger }) {
         path:     '/',
         method:   'HEAD',
         headers:  { ...authHeaders(secondToken, entries[0] || { tokenType: 'bearer', cookieName: null }),
-                    'user-agent': (entries[0] && entries[0].userAgent) || 'jabearri/0.10.1-canary' },
+                    'user-agent': (entries[0] && entries[0].userAgent) || 'jabearri/0.10.2-canary' },
       }, res => resolve(res.statusCode));
       req.on('error', reject);
       req.setTimeout(3000, () => { req.destroy(); reject(new Error('timeout')); });
@@ -480,7 +480,7 @@ async function runReplay({ store, targetUrl, secondToken, logger }) {
               'accept-encoding': 'identity',
               // Use original User-Agent — same as replay to avoid bot-detection
               // content variation causing a classification mismatch.
-              'user-agent':      entry.userAgent || 'jabearri/0.10.1-anon',
+              'user-agent':      entry.userAgent || 'jabearri/0.10.2-anon',
               // No Authorization or Cookie header — truly unauthenticated
             },
           }, res => {

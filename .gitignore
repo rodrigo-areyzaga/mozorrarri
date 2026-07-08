@@ -1,10 +1,10 @@
 node_modules/
-mozorrarri-report.json
-mozorrarri-juiceshop-report.json
-mozorrarri-vampi-report.json
-mozorrarri-demo-report.json
+jabearri-report.json
+jabearri-juiceshop-report.json
+jabearri-vampi-report.json
+jabearri-demo-report.json
 shoplab-report.json
-.mozorrarri_consent
+.jabearri_consent
 .env
 .env.*
 .DS_Store

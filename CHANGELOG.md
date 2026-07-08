@@ -5,7 +5,73 @@ All notable changes to jabearri are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased] — Security fix: encoded scope traversal at all depths
+## [0.10.2] — 2026-07-07
+
+### Changed
+
+- **BREAKING CHANGE — renamed `mozorrarri` to `jabearri`** as part of the
+  Haritzarri tool family consolidation. All environment variables, config
+  file names, and the consent file were renamed accordingly:
+
+  - `MOZORRARRI_CONFIG` → `JABEARRI_CONFIG`
+  - `MOZORRARRI_TOKEN_B` → `JABEARRI_TOKEN_B`
+  - `MOZORRARRI_PROXY_URL` → `JABEARRI_PROXY_URL`
+  - `MOZORRARRI_MAX_ENTRIES` → `JABEARRI_MAX_ENTRIES`
+  - `MOZORRARRI_API_KEY_HEADER` → `JABEARRI_API_KEY_HEADER`
+  - `MOZORRARRI_COOKIE_NAME` → `JABEARRI_COOKIE_NAME`
+  - `MOZORRARRI_TEST_TARGET` → `JABEARRI_TEST_TARGET`
+  - `mozorrarri.config.json` → `jabearri.config.json`
+  - `.mozorrarri_consent` → `.jabearri_consent`
+
+  If you have CI pipelines or scripts referencing the old names, update them
+  before upgrading. The GitHub repository was renamed from `mozorrarri` to
+  `jabearri`; the old URL redirects automatically. Functionality is unchanged
+  by this rename.
+
+- **BREAKING CHANGE — renamed `accguard` to `mozorrarri`** as an earlier step
+  in the same consolidation. All environment variables, config file names, and
+  the consent file were renamed accordingly:
+
+  - `ACCGUARD_CONFIG` → `MOZORRARRI_CONFIG`
+  - `ACCGUARD_TOKEN_B` → `MOZORRARRI_TOKEN_B`
+  - `ACCGUARD_PROXY_URL` → `MOZORRARRI_PROXY_URL`
+  - `ACCGUARD_MAX_ENTRIES` → `MOZORRARRI_MAX_ENTRIES`
+  - `ACCGUARD_API_KEY_HEADER` → `MOZORRARRI_API_KEY_HEADER`
+  - `ACCGUARD_COOKIE_NAME` → `MOZORRARRI_COOKIE_NAME`
+  - `ACCGUARD_TEST_TARGET` → `MOZORRARRI_TEST_TARGET`
+  - `accguard.config.json` → `mozorrarri.config.json`
+  - `.accguard_consent` → `.mozorrarri_consent`
+
+  Functionality was unchanged by this rename. Both renames, and all the naming
+  cleanup that followed them, ship together in this release.
+
+### Security
+
+- **Authorization gate could silently exit 0 with no TTY.** In a non-CI
+  environment with `stdin` not a TTY (e.g. a closed/redirected stdin), the
+  interactive consent prompt's `readline` callback was never invoked, the
+  event loop drained, and the process exited `0` — without recording consent
+  and without hitting the phrase-mismatch path. `requireConsent()` now checks
+  `process.stdin.isTTY` before creating the prompt and exits `2` with a clear
+  message if no interactive terminal is available. The CI bypass path is
+  unaffected.
+- **Public IP misclassification in shorthand IPv4 parsing.** `normalizeIPv4()`
+  zero-padded shorthand addresses (`"172.16"`, `"10.1"`, fewer than 4 dotted
+  parts) at the *end*, producing the wrong address (`"172.16.0.0"` instead of
+  the real `"172.0.0.16"`). Real inet_aton semantics — and what `new URL()`'s
+  own host parser already does — have only the *last* part absorb the
+  remaining bits. The wrong math meant `"172.16"` classified as private
+  (172.16.0.0/12) when the address it actually names, `172.0.0.16`, is not in
+  that block. Inert in jabearri's own runtime today (its one call site already
+  runs targets through `new URL()` first, which pre-canonicalizes the
+  hostname), but a live risk for any future direct caller of the exported
+  `isPrivateHost`/`normalizeIPv4` primitives.
+- **Misleading error for literal public IP targets.** `verifyTarget()` now
+  classifies literal IPv4/IPv6 targets directly instead of attempting DNS
+  resolution on them. Previously `http://8.8.8.8` failed with
+  `Could not resolve hostname: 8.8.8.8` — still blocked, but for the wrong
+  stated reason. Now reports `SAFETY BLOCK: Target "8.8.8.8" is a public IP
+  address.`
 
 ### Fixed
 
@@ -35,49 +101,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `foldEncodedDots(decodeUntilStable(input))`. The two functions are provably
   consistent at every encoding depth, including cap-boundary residuals. Deeper
   residuals (`%252e` and beyond) are not folded — the URL spec does not
-  collapse them without an explicit decode pass — and verified not to widen
+  collapse them without an explicit decode step — and verified not to widen
   scope via URL normalization.
 
-- **875 total tests** (720 in `test/run.js` + 81 in `test/adversarial-harness.js`
-  + 74 in `test/deep-adversarial-harness.js`), including regression tests for
-  triple/mixed-depth encoding, the exact cap-boundary bypass case, and a
-  decode-cap DoS-safety timing check.
+- **Test-harness integrity: `MAX_ENTRIES` empty-string fallback test passed
+  for the wrong reason.** `session-store.js` reads `JABEARRI_MAX_ENTRIES` at
+  module-load time, but `test/adversarial-harness.js` set the env var *after*
+  already requiring the module — so the assertion never exercised the
+  fallback path it claimed to test. Moved to a fresh child process with the
+  env var set before `require`.
+- **Stale env var name in adversarial harness.** A leftover
+  `ACCGUARD_MAX_ENTRIES` reference (from before the accguard→mozorrarri→jabearri
+  renames) meant that specific test silently didn't override anything.
+  Corrected to `JABEARRI_MAX_ENTRIES`.
+- **Naming cleanup completed.** Orphaned `config/mozorrarri.config.json`
+  (unreferenced duplicate of `config/jabearri.config.json`) removed. Stale
+  old-name traces in `.gitignore`, `.npmignore`, and `docs/architecture.svg`
+  updated. `docs/accguard-demo.gif` renamed to `docs/jabearri-demo.gif`.
 
-## [Unreleased] — Renamed to jabearri
-
-**BREAKING CHANGE:** This project was renamed from `mozorrarri` to `jabearri` as part of the Haritzarri tool family consolidation. All environment variables, config file names, and the consent file have been renamed accordingly:
-
-- `MOZORRARRI_CONFIG` → `JABEARRI_CONFIG`
-- `MOZORRARRI_TOKEN_B` → `JABEARRI_TOKEN_B`
-- `MOZORRARRI_PROXY_URL` → `JABEARRI_PROXY_URL`
-- `MOZORRARRI_MAX_ENTRIES` → `JABEARRI_MAX_ENTRIES`
-- `MOZORRARRI_API_KEY_HEADER` → `JABEARRI_API_KEY_HEADER`
-- `MOZORRARRI_COOKIE_NAME` → `JABEARRI_COOKIE_NAME`
-- `MOZORRARRI_TEST_TARGET` → `JABEARRI_TEST_TARGET`
-- `mozorrarri.config.json` → `jabearri.config.json`
-- `.mozorrarri_consent` → `.jabearri_consent`
-
-If you have CI pipelines or scripts referencing the old names, update them before upgrading. The GitHub repository was renamed from `mozorrarri` to `jabearri`; the old URL redirects automatically.
-
-Functionality is unchanged. This is a naming-only release.
-
-## [Unreleased] — Renamed to mozorrarri
-
-**BREAKING CHANGE:** This project was renamed from `accguard` to `mozorrarri` as part of the Haritzarri tool family. All environment variables, config file names, and the consent file have been renamed accordingly:
-
-- `ACCGUARD_CONFIG` → `MOZORRARRI_CONFIG`
-- `ACCGUARD_TOKEN_B` → `MOZORRARRI_TOKEN_B`
-- `ACCGUARD_PROXY_URL` → `MOZORRARRI_PROXY_URL`
-- `ACCGUARD_MAX_ENTRIES` → `MOZORRARRI_MAX_ENTRIES`
-- `ACCGUARD_API_KEY_HEADER` → `MOZORRARRI_API_KEY_HEADER`
-- `ACCGUARD_COOKIE_NAME` → `MOZORRARRI_COOKIE_NAME`
-- `ACCGUARD_TEST_TARGET` → `MOZORRARRI_TEST_TARGET`
-- `accguard.config.json` → `mozorrarri.config.json`
-- `.accguard_consent` → `.mozorrarri_consent`
-
-If you have CI pipelines or scripts referencing the old names, update them before upgrading. The GitHub repository was renamed from `accguard` to `mozorrarri`; the old URL redirects automatically.
-
-Functionality is unchanged. This is a naming-only release.
+- **887 total tests** (732 in `test/run.js` + 81 in `test/adversarial-harness.js`
+  + 74 in `test/deep-adversarial-harness.js`).
 
 ## [0.10.1] — 2026-06-13
 
@@ -118,6 +161,7 @@ Functionality is unchanged. This is a naming-only release.
   replayed as BOLA candidates. Zero findings on a clean run — correct behavior,
   honestly reported.
 
+[0.10.2]: https://github.com/rodrigo-areyzaga/jabearri/releases/tag/v0.10.2
 [0.10.1]: https://github.com/rodrigo-areyzaga/jabearri/releases/tag/v0.10.1
 
 ## [0.10.0] — 2026-06-11

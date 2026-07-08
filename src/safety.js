@@ -98,12 +98,23 @@ function normalizeIPv4(hostname) {
     ].join('.');
   }
 
-  // Mixed octal/hex/decimal dotted notation (e.g. 0177.0.0.1, 0x7f.0.0.1)
+  // Mixed octal/hex/decimal dotted notation, including shorthand forms with
+  // fewer than 4 parts (e.g. 0177.0.0.1, 0x7f.0.0.1, 172.16, 10.1, 127.1).
+  //
+  // Shorthand dotted notation follows classic inet_aton semantics, which is
+  // also what the WHATWG URL host parser applies to bare hostnames like
+  // "172.16" before this code ever sees them (verified: new URL('http://172.16')
+  // .hostname === '172.0.0.16', NOT '172.16.0.0'). Only the LAST part absorbs
+  // whatever bits remain after the earlier parts — it is not simply appended
+  // as another octet with zeros padded after it. Getting this wrong doesn't
+  // just misreport an IP, it can misclassify a public address as private:
+  // "172.16" naively read as "172.16.0.0" looks private (172.16.0.0/12), but
+  // the address it actually names — 172.0.0.16 — is not in that block at all.
   if (/^[0-9a-fx.]+$/i.test(hostname) && hostname.includes('.')) {
     const parts = hostname.split('.');
     if (parts.length > 4) return null;
     try {
-      const octets = parts.map(p => {
+      const nums = parts.map(p => {
         let n;
         if (/^0x/i.test(p)) {
           n = parseInt(p, 16);          // hex: 0x7f
@@ -112,10 +123,27 @@ function normalizeIPv4(hostname) {
         } else {
           n = parseInt(p, 10);          // decimal
         }
-        if (!Number.isFinite(n) || n < 0 || n > 255) throw new Error();
+        if (!Number.isFinite(n) || n < 0) throw new Error();
         return n;
       });
-      while (octets.length < 4) octets.push(0);
+
+      // All parts except the last must fit in a single byte.
+      for (let i = 0; i < nums.length - 1; i++) {
+        if (nums[i] > 255) throw new Error();
+      }
+
+      // The last part absorbs whatever bits remain: 8 bits per already-placed
+      // octet, so e.g. 2 parts total ("a.b") leaves 24 bits for b.
+      const last          = nums[nums.length - 1];
+      const remainingBits = 8 * (4 - (nums.length - 1));
+      const maxLast       = remainingBits >= 32 ? 0xffffffff : (2 ** remainingBits) - 1;
+      if (last > maxLast) throw new Error();
+
+      const octets = nums.slice(0, -1);
+      const remainingOctetCount = 4 - octets.length;
+      for (let i = remainingOctetCount - 1; i >= 0; i--) {
+        octets.push((last >>> (8 * i)) & 0xff);
+      }
       return octets.join('.');
     } catch {
       return null;
@@ -181,6 +209,26 @@ async function verifyTarget(targetUrl) {
   // Normalize first — catches decimal, hex, octal IP representations
   // before they reach the DNS resolver.
   if (isPrivateHost(hostname)) return;
+
+  // If the hostname is itself a literal IP address — not a name that needs
+  // DNS resolution — classify it directly. By this point new URL() has
+  // already canonicalized any decimal/hex/octal/shorthand IPv4 form into
+  // dotted-decimal, so a literal here is either dotted-decimal IPv4 or a
+  // bare IPv6 address. Without this check, dns.resolve4/6() on a literal
+  // IP fails (it isn't a resolvable hostname), which used to produce a
+  // misleading "Could not resolve hostname" error for what is actually a
+  // deliberate, already-known public IP target.
+  const isLiteralIPv4 = /^\d{1,3}(\.\d{1,3}){3}$/.test(hostname);
+  const isLiteralIPv6 = hostname.includes(':');
+  if (isLiteralIPv4 || isLiteralIPv6) {
+    throw new Error(
+      `SAFETY BLOCK: Target "${hostname}" is a public IP address.\n` +
+      `jabearri only works against local or private-network targets.\n` +
+      `Pointing this tool at systems you do not own or have written\n` +
+      `authorization to test may be a criminal offence under the CFAA,\n` +
+      `Computer Misuse Act, or equivalent laws in your jurisdiction.`
+    );
+  }
 
   // DNS resolution — confirm every resolved address is private.
   // Catches DNS rebinding: a public hostname that resolves to a private IP

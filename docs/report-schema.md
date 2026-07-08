@@ -1,6 +1,6 @@
 # jabearri Report Schema — v1
 
-jabearri v0.10.1 produces JSON reports with the following structure.
+jabearri v0.10.2 produces JSON reports with the following structure.
 
 ---
 

@@ -12,7 +12,7 @@ const { ProxyCore }                 = require('./proxy');
 const { runReplay }                 = require('./replay');
 const { printFindings, saveReport } = require('./reporter');
 
-const VERSION         = '0.10.1';
+const VERSION         = '0.10.2';
 const CONSENT_FILE    = path.join(process.env.HOME || process.env.USERPROFILE || '.', '.jabearri_consent');
 const REQUIRED_PHRASE = 'I own or have written authorization to test the target system';
 
@@ -41,6 +41,13 @@ async function requireConsent() {
     console.log('[jabearri] By running jabearri in CI you confirm you own or have');
     console.log('[jabearri] written authorization to test the target system.\n');
     return;
+  }
+
+  if (!process.stdin.isTTY) {
+    console.error('[jabearri] Authorization confirmation requires an interactive terminal.');
+    console.error('[jabearri] In CI, set CI=true. Locally, run jabearri from a terminal');
+    console.error('[jabearri] and type the required phrase.');
+    process.exit(2);
   }
 
   console.log('\n' + '═'.repeat(66));

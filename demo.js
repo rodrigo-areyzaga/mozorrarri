@@ -20,7 +20,7 @@ const { printFindings, saveReport } = require(root + '/src/reporter');
 const { verifyTarget, verifyScope } = require(root + '/src/safety');
 const http = require('http');
 
-const VERSION      = '0.10.1';
+const VERSION      = '0.10.2';
 const SHOPLAB_PORT = 3100;
 const PROXY_PORT   = 8877;
 const TARGET       = `http://127.0.0.1:${SHOPLAB_PORT}`;

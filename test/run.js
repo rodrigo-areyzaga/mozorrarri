@@ -131,6 +131,34 @@ verifyTarget('https://localhost:3000')
     assert(err.message.includes('http://localhost:3000'),'HTTPS error suggests HTTP alternative');
   });
 
+// Literal public IP targets — a literal IP needs no DNS resolution, so it
+// should be classified directly with an accurate SAFETY BLOCK message, not
+// the misleading "Could not resolve hostname" that dns.resolve4/6() would
+// otherwise produce when asked to "resolve" something that's already an IP.
+verifyTarget('http://8.8.8.8')
+  .then(() => assert(false, 'literal public IPv4 target should throw'))
+  .catch(err => {
+    assert(err.message.includes('SAFETY BLOCK'),      'literal public IPv4 gives SAFETY BLOCK, not a DNS error');
+    assert(!err.message.includes('Could not resolve'),'literal public IPv4 message is not the misleading DNS-resolve error');
+  });
+
+verifyTarget('http://[2001:4860:4860::8888]')
+  .then(() => assert(false, 'literal public IPv6 target should throw'))
+  .catch(err => {
+    assert(err.message.includes('SAFETY BLOCK'),      'literal public IPv6 gives SAFETY BLOCK, not a DNS error');
+    assert(!err.message.includes('Could not resolve'),'literal public IPv6 message is not the misleading DNS-resolve error');
+  });
+
+// Shorthand notation that LOOKS private but names a public address once
+// correctly expanded (172.16 → 172.0.0.16, outside 172.16.0.0/12) must
+// still be blocked — this is the end-to-end version of the normalizeIPv4
+// shorthand-math fix below.
+verifyTarget('http://172.16')
+  .then(() => assert(false, 'shorthand-but-public target (172.16 → 172.0.0.16) should throw'))
+  .catch(err => {
+    assert(err.message.includes('SAFETY BLOCK'), 'shorthand-but-public target is blocked as public, not silently allowed as private-looking');
+  });
+
 assert(isPrivateHost('127.0.0.1'),      'loopback 127.0.0.1 is private');
 assert(isPrivateHost('localhost'),      'localhost is private');
 assert(isPrivateHost('10.0.0.1'),       '10.x is private');
@@ -155,6 +183,20 @@ assert(normalizeIPv4('0x0a000001')   === '10.0.0.1',  'hex 0x0a000001 → 10.0.0
 
 // Octal first octet
 assert(normalizeIPv4('0177.0.0.1')   === '127.0.0.1', 'octal 0177.0.0.1 → 127.0.0.1');
+
+// Shorthand dotted notation (< 4 parts) — the last part absorbs the
+// remaining bits (inet_aton semantics), matching what new URL()'s own
+// host parser does. Getting this wrong can misclassify a public address
+// as private: naive zero-padding at the end would read "172.16" as
+// "172.16.0.0" (private, 172.16.0.0/12) when the real address is
+// "172.0.0.16" (not in that block at all).
+assert(normalizeIPv4('172.16')       === '172.0.0.16', 'shorthand 172.16 → 172.0.0.16, not 172.16.0.0');
+assert(normalizeIPv4('10.1')         === '10.0.0.1',   'shorthand 10.1 → 10.0.0.1, not 10.1.0.0');
+assert(normalizeIPv4('127.1')        === '127.0.0.1',  'shorthand 127.1 → 127.0.0.1, not 127.1.0.0');
+assert(normalizeIPv4('192.168.1')    === '192.168.0.1','shorthand 192.168.1 → 192.168.0.1, not 192.168.1.0');
+assert(normalizeIPv4('172.16.1')     === '172.16.0.1', 'shorthand 172.16.1 → 172.16.0.1');
+assert(!isPrivateHost('172.16'),                        'shorthand 172.16 is NOT private (real address 172.0.0.16 is public)');
+assert(isPrivateHost('172.16.1'),                        'shorthand 172.16.1 IS private (real address 172.16.0.1)');
 
 // isPrivateHost catches normalized forms
 assert(isPrivateHost('2130706433'),  'decimal loopback 2130706433 is private');
@@ -2022,7 +2064,7 @@ async function runIntegration() {
   const reportRaw = fs.readFileSync(reportPath, 'utf8');
   const report = JSON.parse(reportRaw);
 
-  assert(report.version === '0.10.1', 'report version is 0.10.1');
+  assert(report.version === '0.10.2', 'report version is 0.10.2');
   assert(report.reportType === 'authorization-regression-evidence', 'report has reportType');
 
   // Privacy section
@@ -2034,7 +2076,7 @@ async function runIntegration() {
   // Integrity section
   assert(!!report.integrity, 'report has integrity section');
   assert(report.integrity.reportSchema === 'jabearri-report-v1', 'integrity: schema correct');
-  assert(report.integrity.generatedBy === 'jabearri 0.10.1', 'integrity: generatedBy correct');
+  assert(report.integrity.generatedBy === 'jabearri 0.10.2', 'integrity: generatedBy correct');
   assert(report.integrity.detectionPrimitive === 'cross-user replay hash match', 'integrity: primitive correct');
   assert(report.integrity.bodyRetentionPolicy === 'not-stored', 'integrity: body retention correct');
   assert(report.integrity.tokenRetentionPolicy === 'fingerprint-only', 'integrity: token retention correct');

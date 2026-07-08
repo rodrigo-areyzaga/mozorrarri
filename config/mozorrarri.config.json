@@ -1,7 +1,0 @@
-{
-  "target": "http://localhost:3000",
-  "port": 8877,
-  "scope": ["/api/"],
-  "exclude": ["/api/health", "/api/public/"],
-  "outputFile": "mozorrarri-report.json"
-}

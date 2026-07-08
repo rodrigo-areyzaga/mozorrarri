@@ -1,7 +1,7 @@
-# jabearri v0.10.1 — Adversarial Security Assessment
+# jabearri v0.10.2 — Adversarial Security Assessment
 
-**Build:** v0.10.1 + security fixes — 875 total tests passing (720 + 81 + 74 across three harnesses)
-**Assessment:** Twelve adversarial rounds (v0.9.2) plus Exposure Summary verification (v0.10.1) plus encoded scope traversal hardening (post-v0.10.1). 85+ attack vectors. 13 harnesses. Zero open findings.
+**Build:** v0.10.2 — 887 total tests passing (732 + 81 + 74 across three harnesses)
+**Assessment:** Twelve adversarial rounds (v0.9.2) plus Exposure Summary verification (v0.10.1) plus encoded scope traversal hardening, authorization-gate TTY fail-closed fix, and public-IP classification fixes (v0.10.2). 85+ attack vectors. 13 harnesses. Zero open findings.
 
 ---
 
@@ -99,4 +99,10 @@ Proxy survived randomized stress testing (40 fuzz requests: random paths, 10KB U
 | 0.10.1 | Reporter claimed "JSON normalisation" for raw-prefixed (big-int) hashes | `whyFlagged()` now branches on the actual hash prefix; wording matches the proof artifact |
 | 0.10.1 | Sensitive data in URLs not addressed | Documented as a conscious reproducibility tradeoff; tests lock the behavior so a future silent change is caught. |
 | 0.10.1 | False positives from over-eager resource-ID extraction | `extractResourceIds` rewritten: skips API version segments (`v1`/`v2`/`v10`), rejects hyphenated route names directly under `/api`, extracts query-string IDs only from id-like keys. 708 tests passing. |
-| post-0.10.1 | Encoded scope traversal (triple/mixed-depth + cap-boundary) could widen effective scope | `verifyScope()` and `normalizePath()` now apply `foldEncodedDots(decodeUntilStable(input))`: fixed-point decode (capped for DoS safety) plus explicit `%2e`/`%2E` folding to mirror the WHATWG URL spec's native dot-segment collapsing. 875 tests passing (720 + 81 + 74). |
+| 0.10.2 | Encoded scope traversal (triple/mixed-depth + cap-boundary) could widen effective scope | `verifyScope()` and `normalizePath()` now apply `foldEncodedDots(decodeUntilStable(input))`: fixed-point decode (capped for DoS safety) plus explicit `%2e`/`%2E` folding to mirror the WHATWG URL spec's native dot-segment collapsing. |
+| 0.10.2 | Authorization gate could silently exit 0 with no TTY | `requireConsent()` checks `process.stdin.isTTY` before prompting; exits 2 with a clear message when no interactive terminal is available. CI bypass unaffected. |
+| 0.10.2 | Public IP misclassified as private in shorthand IPv4 parsing | `normalizeIPv4()` rewritten to inet_aton semantics: only the last dotted part absorbs remaining bits, matching what `new URL()`'s own host parser does. `"172.16"` now correctly resolves to `172.0.0.16` (public), not `172.16.0.0` (looked private). |
+| 0.10.2 | Literal public IP targets gave a misleading "could not resolve hostname" error | `verifyTarget()` classifies literal IPv4/IPv6 targets directly instead of attempting DNS resolution on them; now reports an accurate `SAFETY BLOCK` message. |
+| 0.10.2 | Adversarial test for `MAX_ENTRIES` empty-string fallback passed for the wrong reason | `session-store.js` reads the env var at module-load time; the test set it *after* already requiring the module. Moved to a fresh child process with the env var set before `require`. |
+| 0.10.2 | Stale `ACCGUARD_MAX_ENTRIES` env var name left over from the rename | Corrected to `JABEARRI_MAX_ENTRIES`; the test now actually exercises the override it claims to. |
+| 0.10.2 | Old-name traces remained after the mozorrarri→jabearri rename | Orphaned `config/mozorrarri.config.json` removed; stale references in `.gitignore`, `.npmignore`, `docs/architecture.svg` updated; `docs/accguard-demo.gif` renamed to `docs/jabearri-demo.gif`. |

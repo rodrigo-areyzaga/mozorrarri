@@ -246,7 +246,7 @@ function saveReport(findings, store, outputPath, runContext = {}) {
   const misauthCount = findings.filter(f => f.type === 'possible-missing-authentication').length;
 
   const report = {
-    version:     '0.10.1',
+    version:     '0.10.2',
     generatedAt: new Date().toISOString(),
     reportType:  'authorization-regression-evidence',
 
@@ -287,7 +287,7 @@ function saveReport(findings, store, outputPath, runContext = {}) {
 
     integrity: {
       reportSchema:         'jabearri-report-v1',
-      generatedBy:          'jabearri 0.10.1',
+      generatedBy:          'jabearri 0.10.2',
       detectionPrimitive:   'cross-user replay hash match',
       bodyRetentionPolicy:  'not-stored',
       tokenRetentionPolicy: 'fingerprint-only',

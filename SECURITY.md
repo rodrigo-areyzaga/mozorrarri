@@ -48,7 +48,7 @@ These are intentional scope boundaries, not implementation gaps. See the README 
 
 ## Adversarial assessment
 
-jabearri v0.9.2 underwent twelve rounds of independent adversarial testing across 85+ attack vectors and 13 harnesses. Zero open findings at release. v0.10.1 added Exposure Summary verification with 708 built-in tests passing. The current build includes security fixes for encoded scope traversal at all encoding depths and runs 875 tests (720 + 81 + 74 across three harnesses), all passing.
+jabearri v0.9.2 underwent twelve rounds of independent adversarial testing across 85+ attack vectors and 13 harnesses. Zero open findings at release. v0.10.1 added Exposure Summary verification with 708 built-in tests passing. v0.10.2 closed an authorization-gate fail-open on non-interactive terminals, fixed a public-IP misclassification in the shorthand IPv4 parser, and corrected a SAFETY BLOCK message that misreported literal public IP targets as unresolvable hostnames. The current build runs 887 tests (732 + 81 + 74 across three harnesses), all passing.
 
 Areas tested: detection quality, hash soundness, capture pipeline, scope parsing, token handling, operational trust, proxy security, shell safety, fix interactions, and temporal contract.
 

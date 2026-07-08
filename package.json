@@ -1,6 +1,6 @@
 {
   "name": "jabearri",
-  "version": "0.10.1",
+  "version": "0.10.2",
   "description": "Authorization regression testing from real authenticated traffic",
   "main": "src/cli.js",
   "bin": {

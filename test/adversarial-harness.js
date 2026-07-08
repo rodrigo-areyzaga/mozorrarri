@@ -379,17 +379,34 @@ check('All 5000 entries are replayable (all have integer IDs)', () => replayable
 
 sec('PERFORMANCE — MAX_ENTRIES cap holds under load');
 
-process.env.ACCGUARD_MAX_ENTRIES = '';
-const cappedStore = new SessionStore();
-for (let i = 0; i < 10005; i++) {
-  cappedStore.record({
-    method: 'GET', url: `/api/items/${i}`,
-    headers: { authorization: 'Bearer tok' },
-    statusCode: 200, contentLength: 10,
-    contentHash: `json:h${i}`, rawHash: `raw:r${i}`,
-  });
+// session-store.js reads JABEARRI_MAX_ENTRIES at module-load time (top of
+// file), and this harness already required session-store above — so setting
+// the env var here would have no effect on the already-loaded module. Spawn
+// a fresh child process instead, with the env var set before it requires
+// session-store, to actually exercise the empty-string fallback path.
+{
+  const { spawnSync } = require('child_process');
+  const result = spawnSync(process.execPath, ['-e', `
+    process.env.JABEARRI_MAX_ENTRIES = '';
+    const { SessionStore } = require(${JSON.stringify(root + '/src/session-store')});
+    const s = new SessionStore();
+    for (let i = 0; i < 10005; i++) {
+      s.record({
+        method: 'GET', url: '/api/items/' + i,
+        headers: { authorization: 'Bearer tok' },
+        statusCode: 200, contentLength: 10,
+        contentHash: 'json:h' + i, rawHash: 'raw:r' + i,
+      });
+    }
+    console.log(JSON.stringify({ len: s.entries.length }));
+  `], { encoding: 'utf8' });
+
+  let out = null;
+  try { out = JSON.parse(result.stdout.trim().split('\n').pop()); } catch { /* leave null, check fails below */ }
+
+  check('MAX_ENTRIES empty-string fallback caps at 10000 (fresh process)', () =>
+    result.status === 0 && out && out.len === 10000);
 }
-check('MAX_ENTRIES cap holds at 10000 under 10005 inserts', () => cappedStore.entries.length <= 10000);
 
 sec('PERFORMANCE — contentHash on large payloads');
 
