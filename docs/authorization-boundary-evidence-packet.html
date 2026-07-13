@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>mozorrarri — Authorization Boundary Evidence Packet</title>
+<title>jabearri — Authorization Boundary Evidence Packet</title>
 <style>
   :root {
     --bg: #0d0f12;
@@ -497,18 +497,18 @@
   <!-- Header -->
   <div class="header">
     <div class="logo-line">
-      <span class="logo">mozorrarri</span>
-      <span class="version">v0.10.1</span>
+      <span class="logo">jabearri</span>
+      <span class="version">v0.10.2</span>
     </div>
     <div class="header-title">Authorization Boundary Evidence Packet</div>
   </div>
 
   <!-- What it verifies -->
   <div class="section">
-    <div class="section-label">What mozorrarri verifies</div>
+    <div class="section-label">What jabearri verifies</div>
     <div class="definition">
-      mozorrarri answers one question: <strong>does a protected resource return the same response to a different authenticated user?</strong><br><br>
-      It records real authenticated traffic from user A, replays each request using user B's token, and compares responses using content hashes. If the endpoint is expected to be owner-scoped and the replayed response matches, mozorrarri flags a confirmed authorization-boundary failure. No raw tokens or response bodies are stored. Response values are summarized by field path, classification signal, size, and content hash. Endpoint paths and resource identifiers are retained only where needed for reproduction.
+      jabearri answers one question: <strong>does a protected resource return the same response to a different authenticated user?</strong><br><br>
+      It records real authenticated traffic from user A, replays each request using user B's token, and compares responses using content hashes. If the endpoint is expected to be owner-scoped and the replayed response matches, jabearri flags a confirmed authorization-boundary failure. No raw tokens or response bodies are stored. Response values are summarized by field path, classification signal, size, and content hash. Endpoint paths and resource identifiers are retained only where needed for reproduction.
     </div>
   </div>
 
@@ -547,7 +547,7 @@
       </div>
       <div class="meta-item">
         <div class="meta-key">Tool version</div>
-        <div class="meta-val mono">mozorrarri 0.10.1</div>
+        <div class="meta-val mono">jabearri v0.10.2</div>
       </div>
       <div class="meta-item">
         <div class="meta-key">Requests observed</div>
@@ -575,7 +575,7 @@
       </div>
     </div>
     <div class="demo-note">
-      <strong>Demo target:</strong> OWASP Juice Shop is an intentionally vulnerable training application maintained by OWASP. This packet demonstrates mozorrarri's evidence format and replay model — it is not a live third-party disclosure.
+      <strong>Demo target:</strong> OWASP Juice Shop is an intentionally vulnerable training application maintained by OWASP. This packet demonstrates jabearri's evidence format and replay model — it is not a live third-party disclosure.
     </div>
   </div>
 
@@ -727,7 +727,7 @@
     <div id="json-wrapper" style="display:none;">
     <div class="json-section">
       <div class="json-header">
-        <span class="json-title">mozorrarri-report-v1 — AG-20260614T033948Z-001</span>
+        <span class="json-title">jabearri-report-v1 — AG-20260614T033948Z-001</span>
         <span class="json-note">raw machine-readable output</span>
       </div>
       <div class="json-body"><span class="j-punc">{</span>
@@ -791,8 +791,8 @@
   <!-- Footer -->
   <div class="footer">
     <div class="footer-left">
-      mozorrarri — part of the Haritzarri tool family<br>
-      github.com/rodrigo-areyzaga/mozorrarri
+      jabearri — part of the Haritzarri tool family<br>
+      github.com/rodrigo-areyzaga/jabearri
     </div>
     <div class="footer-right">Evidence, not assumptions.</div>
   </div>
