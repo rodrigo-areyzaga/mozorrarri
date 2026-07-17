@@ -1,0 +1,617 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>jabearri — live authorization boundary demo</title>
+<style>
+  :root {
+    --bg: #0d0f12;
+    --surface: #13161b;
+    --border: #1e2329;
+    --amber: #f0a500;
+    --amber-dim: #a87200;
+    --white: #f0f2f5;
+    --muted: #6b7280;
+    --red: #e05252;
+    --green: #4caf7d;
+    --blue: #60a5fa;
+    --mono: 'Courier New', Courier, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--white);
+    font-family: var(--sans);
+    font-size: 14px;
+    line-height: 1.7;
+    min-height: 100vh;
+  }
+
+  .page {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 48px 24px 80px;
+  }
+
+  /* Header */
+  .header { margin-bottom: 48px; }
+
+  .logo {
+    font-family: var(--mono);
+    font-size: 22px;
+    color: var(--amber);
+    margin-bottom: 4px;
+  }
+
+  .tagline {
+    font-size: 13px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+
+  /* Explainer */
+  .explainer {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--amber);
+    padding: 20px 24px;
+    margin-bottom: 32px;
+    font-size: 14px;
+    line-height: 1.8;
+  }
+
+  .explainer strong { color: var(--amber); }
+
+  /* The demo scenario */
+  .scenario {
+    margin-bottom: 32px;
+  }
+
+  .scenario-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--amber-dim);
+    margin-bottom: 12px;
+  }
+
+  .users {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 12px;
+  }
+
+  .user-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    padding: 14px 16px;
+  }
+
+  .user-name {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--amber);
+    margin-bottom: 4px;
+  }
+
+  .user-desc {
+    font-size: 12px;
+    color: var(--muted);
+  }
+
+  /* Run button */
+  .run-btn {
+    display: block;
+    width: 100%;
+    padding: 16px;
+    background: var(--amber);
+    color: #0d0f12;
+    border: none;
+    font-family: var(--mono);
+    font-size: 13px;
+    font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    cursor: pointer;
+    transition: opacity 0.15s;
+    margin-bottom: 32px;
+  }
+
+  .run-btn:hover { opacity: 0.88; }
+  .run-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* Status */
+  .status {
+    display: none;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--muted);
+    margin-bottom: 24px;
+    padding: 12px 16px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+  }
+
+  .status.visible { display: block; }
+
+  /* Progress steps */
+  .steps {
+    display: none;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 32px;
+  }
+
+  .steps.visible { display: flex; }
+
+  .step {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--muted);
+    opacity: 0.4;
+    transition: opacity 0.3s;
+  }
+
+  .step.active { color: var(--white); opacity: 1; }
+  .step.done { color: var(--green); opacity: 1; }
+
+  .step-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+    flex-shrink: 0;
+  }
+
+  /* Results */
+  .results { display: none; }
+  .results.visible { display: block; }
+
+  .results-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 14px 20px;
+    background: #0a0c0f;
+    border: 1px solid var(--border);
+    border-bottom: none;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--muted);
+  }
+
+  .results-title { color: var(--white); font-size: 13px; }
+
+  .summary-bar {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    border: 1px solid var(--border);
+    border-bottom: none;
+    background: var(--surface);
+  }
+
+  .summary-item {
+    padding: 14px 20px;
+    border-right: 1px solid var(--border);
+  }
+
+  .summary-item:last-child { border-right: none; }
+
+  .summary-key {
+    font-family: var(--mono);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+    margin-bottom: 4px;
+  }
+
+  .summary-val {
+    font-size: 20px;
+    font-weight: 600;
+    color: var(--white);
+  }
+
+  .summary-val.red { color: var(--red); }
+  .summary-val.green { color: var(--green); }
+
+  /* Individual findings */
+  .finding {
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--red);
+    margin-bottom: 12px;
+    background: var(--surface);
+  }
+
+  .finding-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 18px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .finding-id {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--muted);
+  }
+
+  .badge {
+    font-family: var(--mono);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    padding: 2px 8px;
+    border: 1px solid var(--red);
+    color: var(--red);
+    background: rgba(224,82,82,0.08);
+  }
+
+  .finding-body { padding: 14px 18px; }
+
+  .finding-path {
+    font-family: var(--mono);
+    font-size: 13px;
+    color: var(--amber);
+    margin-bottom: 10px;
+  }
+
+  .finding-row {
+    display: flex;
+    gap: 24px;
+    margin-bottom: 10px;
+    flex-wrap: wrap;
+  }
+
+  .finding-field { }
+
+  .field-key {
+    font-family: var(--mono);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+    margin-bottom: 2px;
+  }
+
+  .field-val {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--white);
+  }
+
+  .field-val.red { color: var(--red); }
+  .field-val.green { color: var(--green); }
+
+  .hash-block {
+    background: #0a0c0f;
+    border: 1px solid var(--border);
+    padding: 10px 12px;
+    margin-bottom: 10px;
+  }
+
+  .hash-line {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--muted);
+    word-break: break-all;
+    margin-bottom: 2px;
+  }
+
+  .hash-line span { color: var(--green); }
+
+  .hash-match {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--amber);
+    margin-top: 6px;
+    padding-top: 6px;
+    border-top: 1px solid var(--border);
+  }
+
+  .exposed-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 10px;
+  }
+
+  .tag {
+    font-family: var(--mono);
+    font-size: 10px;
+    padding: 2px 8px;
+    background: #0a0c0f;
+    border: 1px solid var(--border);
+    color: var(--muted);
+  }
+
+  .tag.pii { color: var(--red); border-color: rgba(224,82,82,0.3); }
+  .tag.financial { color: var(--amber-dim); border-color: rgba(240,165,0,0.3); }
+  .tag.identifier { color: var(--blue); border-color: rgba(96,165,250,0.3); }
+  .tag.location { color: #a78bfa; border-color: rgba(167,139,250,0.3); }
+
+  .curl-block {
+    background: #0a0c0f;
+    border: 1px solid var(--border);
+    padding: 10px 12px;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: #9ca3af;
+    word-break: break-all;
+  }
+
+  /* Clean result */
+  .clean-result {
+    display: none;
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--green);
+    background: var(--surface);
+    padding: 20px 24px;
+  }
+
+  .clean-result.visible { display: block; }
+
+  .clean-title {
+    font-family: var(--mono);
+    font-size: 13px;
+    color: var(--green);
+    margin-bottom: 8px;
+  }
+
+  .clean-desc {
+    font-size: 13px;
+    color: var(--muted);
+  }
+
+  /* Footer note */
+  .demo-note {
+    margin-top: 40px;
+    padding: 14px 18px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    font-size: 12px;
+    color: var(--muted);
+    line-height: 1.7;
+  }
+
+  .demo-note a {
+    color: var(--amber);
+    text-decoration: none;
+  }
+
+  .divider {
+    border: none;
+    border-top: 1px solid var(--border);
+    margin: 32px 0;
+  }
+
+  .findings-list { margin-top: 0; }
+
+  @media (max-width: 480px) {
+    .users { grid-template-columns: 1fr; }
+    .summary-bar { grid-template-columns: 1fr; }
+    .summary-item { border-right: none; border-bottom: 1px solid var(--border); }
+    .summary-item:last-child { border-bottom: none; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="header">
+    <div class="logo">jabearri</div>
+    <div class="tagline">Live authorization boundary demo</div>
+  </div>
+
+  <div class="explainer">
+    <strong>Authentication is not authorization.</strong><br>
+    Being logged in does not mean you should see every object. jabearri confirms one specific failure: user B receiving the same protected resource originally observed under user A. Below is a live run against ShopLab — a deliberately vulnerable demo shop with 4 hidden IDOR vulnerabilities invisible in the UI.
+  </div>
+
+  <div class="scenario">
+    <div class="scenario-label">Demo scenario</div>
+    <div class="users">
+      <div class="user-card">
+        <div class="user-name">Alice — resource owner</div>
+        <div class="user-desc">Authenticated user. jabearri records her API traffic.</div>
+      </div>
+      <div class="user-card">
+        <div class="user-name">Bob — replay principal</div>
+        <div class="user-desc">Different authenticated user. jabearri replays Alice's requests as Bob.</div>
+      </div>
+    </div>
+  </div>
+
+  <button class="run-btn" id="runBtn" onclick="runDemo()">
+    Run authorization boundary check
+  </button>
+
+  <div class="steps" id="steps">
+    <div class="step" id="step1"><span class="step-dot"></span>Starting ShopLab demo environment</div>
+    <div class="step" id="step2"><span class="step-dot"></span>Recording Alice's authenticated session</div>
+    <div class="step" id="step3"><span class="step-dot"></span>Replaying requests as Bob</div>
+    <div class="step" id="step4"><span class="step-dot"></span>Comparing response hashes</div>
+    <div class="step" id="step5"><span class="step-dot"></span>Building evidence report</div>
+  </div>
+
+  <div class="results" id="results">
+    <div class="results-header">
+      <span class="results-title">jabearri — authorization regression results</span>
+      <span id="timestamp"></span>
+    </div>
+
+    <div class="summary-bar">
+      <div class="summary-item">
+        <div class="summary-key">Observed</div>
+        <div class="summary-val" id="observed">—</div>
+      </div>
+      <div class="summary-item">
+        <div class="summary-key">Replayable</div>
+        <div class="summary-val" id="replayable">—</div>
+      </div>
+      <div class="summary-item">
+        <div class="summary-key">Findings</div>
+        <div class="summary-val red" id="findingsCount">—</div>
+      </div>
+    </div>
+
+    <div class="findings-list" id="findingsList"></div>
+
+    <div class="clean-result" id="cleanResult">
+      <div class="clean-title">✓ No authorization regressions detected</div>
+      <div class="clean-desc">No identical cross-user response replay was detected in the observed traffic. This does not prove the API has no authorization bugs — only that this specific failure mode was not observed in this run.</div>
+    </div>
+  </div>
+
+  <hr class="divider" id="divider" style="display:none">
+
+  <div class="demo-note" id="demoNote" style="display:none">
+    <strong style="color:var(--white);">Demo target:</strong> ShopLab is an intentionally vulnerable application built into jabearri for demonstration purposes. No real user data, no third-party systems. This packet demonstrates jabearri's evidence format and replay model only.<br><br>
+    <a href="https://rodrigo-areyzaga.github.io/jabearri/authorization-boundary-evidence-packet.html">View full evidence packet →</a> &nbsp;·&nbsp;
+    <a href="https://github.com/rodrigo-areyzaga/jabearri">GitHub →</a>
+  </div>
+
+</div>
+
+<script>
+  const API = 'https://jabearri-production.up.railway.app/run';
+
+  function classifySignal(signal) {
+    if (!signal) return '';
+    const s = signal.toLowerCase();
+    if (s.includes('pii')) return 'pii';
+    if (s.includes('financial')) return 'financial';
+    if (s.includes('location')) return 'location';
+    if (s.includes('identifier')) return 'identifier';
+    return '';
+  }
+
+  function setStep(n) {
+    for (let i = 1; i <= 5; i++) {
+      const el = document.getElementById('step' + i);
+      if (i < n) el.className = 'step done';
+      else if (i === n) el.className = 'step active';
+      else el.className = 'step';
+    }
+  }
+
+  function sleep(ms) {
+    return new Promise(r => setTimeout(r, ms));
+  }
+
+  async function runDemo() {
+    const btn = document.getElementById('runBtn');
+    btn.disabled = true;
+    btn.textContent = 'Running…';
+
+    document.getElementById('steps').className = 'steps visible';
+    document.getElementById('results').className = 'results';
+    document.getElementById('findingsList').innerHTML = '';
+    document.getElementById('cleanResult').className = 'clean-result';
+    document.getElementById('divider').style.display = 'none';
+    document.getElementById('demoNote').style.display = 'none';
+
+    setStep(1);
+    await sleep(600);
+    setStep(2);
+    await sleep(500);
+    setStep(3);
+
+    let data;
+    try {
+      const res = await fetch(API);
+      if (!res.ok) throw new Error('Server error ' + res.status);
+      data = await res.json();
+    } catch (err) {
+      setStep(0);
+      document.getElementById('steps').innerHTML +=
+        `<div class="step active"><span class="step-dot"></span>Error: ${err.message}. Try again in a moment.</div>`;
+      btn.disabled = false;
+      btn.textContent = 'Run authorization boundary check';
+      return;
+    }
+
+    setStep(4);
+    await sleep(400);
+    setStep(5);
+    await sleep(300);
+
+    // Mark all done
+    for (let i = 1; i <= 5; i++) {
+      document.getElementById('step' + i).className = 'step done';
+    }
+
+    // Populate summary
+    document.getElementById('observed').textContent = data.observed;
+    document.getElementById('replayable').textContent = data.replayable;
+    document.getElementById('findingsCount').textContent = data.findings.length;
+    document.getElementById('timestamp').textContent = new Date().toISOString().replace('T', ' ').slice(0, 19) + ' UTC';
+
+    // Render findings
+    const list = document.getElementById('findingsList');
+
+    if (data.findings.length === 0) {
+      document.getElementById('findingsCount').className = 'summary-val green';
+      document.getElementById('cleanResult').className = 'clean-result visible';
+    } else {
+      data.findings.forEach((f, i) => {
+        const tags = (f.signals || []).map(s => {
+          const cls = classifySignal(s.signal || s.classification || '');
+          return `<span class="tag ${cls}">${s.field}</span>`;
+        }).join('');
+
+        const hash = f.evidenceHash || '';
+        const shortHash = hash.length > 20 ? hash.slice(0, 12) + '…' + hash.slice(-8) : hash;
+
+        list.innerHTML += `
+          <div class="finding">
+            <div class="finding-head">
+              <span class="finding-id">${f.findingId || 'AG-' + Date.now() + '-00' + (i+1)}</span>
+              <span class="badge">HIGH</span>
+            </div>
+            <div class="finding-body">
+              <div class="finding-path">${f.method} ${f.path}</div>
+              <div class="finding-row">
+                <div class="finding-field">
+                  <div class="field-key">Alice (user A)</div>
+                  <div class="field-val green">200 OK</div>
+                </div>
+                <div class="finding-field">
+                  <div class="field-key">Bob replay (user B)</div>
+                  <div class="field-val red">200 OK — boundary failed</div>
+                </div>
+              </div>
+              ${hash ? `
+              <div class="hash-block">
+                <div class="hash-line">alice &nbsp;<span>${shortHash}</span></div>
+                <div class="hash-line">bob &nbsp;&nbsp;<span>${shortHash}</span></div>
+                <div class="hash-match">→ hashes match — Bob received Alice's protected object</div>
+              </div>` : ''}
+              ${tags ? `<div class="exposed-tags">${tags}</div>` : ''}
+              ${f.curl ? `<div class="curl-block">${f.curl.replace(/</g,'&lt;')}</div>` : ''}
+            </div>
+          </div>`;
+      });
+    }
+
+    document.getElementById('results').className = 'results visible';
+    document.getElementById('divider').style.display = 'block';
+    document.getElementById('demoNote').style.display = 'block';
+
+    btn.disabled = false;
+    btn.textContent = 'Run again';
+  }
+</script>
+</body>
+</html>
