@@ -7,7 +7,7 @@
     "jabearri": "src/cli.js"
   },
   "scripts": {
-    "start": "node src/cli.js",
+    "start": "node demo-server.js",
     "test": "node test/run.js",
     "demo": "node demo.js",
     "test:adversarial": "node test/adversarial-harness.js",
